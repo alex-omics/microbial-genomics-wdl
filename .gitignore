@@ -1,0 +1,44 @@
+# Cromwell / Terra execution artifacts
+cromwell-executions/
+cromwell-workflow-logs/
+*.log
+
+# WDL zip imports
+*.zip
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.ipynb_checkpoints/
+*.egg-info/
+
+# R
+.Rhistory
+.RData
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Large sequencing files — test data lives in GCS, not git
+*.fasta
+*.fa
+*.fastq
+*.fastq.gz
+*.fq.gz
+*.bam
+*.bai
+*.cram
+*.vcf
+*.vcf.gz
+*.bcf
+
+# Conda environments
+.conda/
+*.conda
+
+# Editor artifacts
+.vscode/settings.json
+*.swp
+*.swo
