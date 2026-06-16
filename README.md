@@ -10,11 +10,13 @@ WDL workflows for studying the genomes of bacterial and other microbial pathogen
 | multimodal_gwas | Use multiple statistical approaches to correlate genes or variants to phenotypes | 🔜 Planned |
 
 ## Repository Structure
-workflows/    # Full workflows built from modular tasks
-tasks/        # Individual reusable WDL task files
-docker/       # Dockerfiles for custom Docker images
-tests/        # Test WDLs and pointers to test data
-docs/         # Per-workflow documentation
+```
+workflows   # Full workflows built from modular tasks
+tasks       # Individual reusable WDL task files
+docker      # Dockerfiles for custom Docker images
+tests       # Test WDLs and pointers to test data
+docs        # Per-workflow documentation
+```
 
 ## Acknowledgements
 Workflows are being developed during my time in the [Anahtar Lab](https://anahtarlab.mgh.harvard.edu) and 
