@@ -6,6 +6,7 @@ WDL workflows for studying the genomes of bacterial and other microbial pathogen
 | -------- | ----------- | --------- |
 | annotate_assembly | Annotate an assembled genome with optional reference input  | 🔜 Planned |
 | assembly_qc | Assess the completeness and quality of an assembled genome | 🚧 In development |
+| fetch_sra_reads | Pulls fastq.gz files from Sequence Read Archive into Terra | 🚧 In development |
 | multimodal_gwas | Use multiple statistical approaches to correlate genes or variants to phenotypes | 🔜 Planned |
 | polish_assembly | Uses short reads to improve a long-read assembly | 🚧 In development |
 | rna_seq_counts | Align trimmed reads using a specified aligner to a reference, and count read pileup | 🔜 Planned |
