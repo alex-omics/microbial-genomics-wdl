@@ -42,3 +42,4 @@ __pycache__/
 .vscode/settings.json
 *.swp
 *.swodocker/**/*.tar.gz
+docker/**/*.tar.gz

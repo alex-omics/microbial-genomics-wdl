@@ -47,7 +47,7 @@ task busco {
             --mode genome \
             --cpu ~{cpu} \
             --download_path /data/busco_downloads \
-            "${LINEAGE_ARGS}"
+            ${LINEAGE_ARGS}
 
         # Copy summary file to working directory for output capture
         cp ~{sample_name}_busco/short_summary*.txt \
@@ -71,7 +71,7 @@ task busco {
     }
 
     runtime {
-        docker:         "aarvani1/busco-prokaryota:5.7.1"
+        docker:         "aarvani1/busco-prokaryota:5.7.2"
         memory:         "~{mem_gb} GB"
         cpu:            cpu
         disk:           "local_disk ~{disk_gb} SSD"
