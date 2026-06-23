@@ -30,10 +30,10 @@ task busco {
             echo "Running BUSCO with provided lineage DB: ~{busco_lineage}..."
 
             # Verify the lineage exists in the image before running
-            if [ ! -d "/busco_downloads/lineages/~{busco_lineage}" ]; then  
+            if [ ! -d "/data/busco_downloads/lineages/~{busco_lineage}" ]; then
                 echo "ERROR: lineage '~{busco_lineage}' not found in image." >&2
                 echo "Available lineages:" >&2
-                ls /busco_downloads/lineages/ >&2
+                ls /data/busco_downloads/lineages/ >&2
                 exit 1
             fi
 
@@ -46,7 +46,7 @@ task busco {
             --out ~{sample_name} \
             --mode genome \
             --cpu ~{cpu} \
-            --download_path /busco_downloads \
+            --download_path /data/busco_downloads \
             "${LINEAGE_ARGS}"
 
         # Copy summary file to working directory for output capture
