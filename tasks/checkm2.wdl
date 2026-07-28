@@ -79,9 +79,29 @@ task checkm2 {
             ' ~{sample_name}_checkm2_report.tsv
         }
 
-        pull "Completeness"             > COMPLETENESS
-        pull "Contamination"            > CONTAMINATION
-        pull "Completeness_Model_Used"  > MODEL_USED
+        # CheckM2 names the completeness column after the model mode: 'Completeness'
+        # in auto mode, but 'Completeness_General' under --general and
+        # 'Completeness_Specific' under --specific. Take whichever is present, or
+        # read_float would fail the task whenever a model is forced.
+        pull_first() {
+            local v
+            for key in "$@"; do
+                v="$(pull "${key}")"
+                if [ "${v}" != "NA" ]; then
+                    echo "${v}"
+                    return 0
+                fi
+            done
+            echo "NA"
+        }
+
+        pull_first "Completeness" "Completeness_General" "Completeness_Specific" > COMPLETENESS
+        pull "Contamination"                                                     > CONTAMINATION
+        # Absent when a model is forced; fall back to the mode we asked for.
+        pull_first "Completeness_Model_Used" > MODEL_USED
+        if [ "$(cat MODEL_USED)" = "NA" ]; then
+            ~{if force_general_model then "echo general" else "echo auto"} > MODEL_USED
+        fi
         pull "Coding_Density"           > CODING_DENSITY
         pull "Contig_N50"               > CONTIG_N50
         pull "Genome_Size"              > GENOME_SIZE
