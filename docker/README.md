@@ -32,10 +32,10 @@ license file travels with the vendored source at
 | `microgwas-pyseer` | `pyseer.yaml` (`pyseer>=1.4.0`) | `mambaorg/micromamba` | pyseer 1.4.2 + bwa/bedtools for `map_back.py`. Supersedes `aarvani1/pyseer:1.4.0` |
 | `microgwas-mash` | `mash.yaml` (`mash=2.1`) | `python:3.10-slim` + marbl mash 2.1 release binary | Adds pyseer for the `square_mash` helper used by the `distance` rule. Does *not* build on `staphb/mash:2.1`: that image is Ubuntu-16.04-era (Python 3.5, pip 8.1.1) and cannot install a current pandas, so the layering is inverted and mash comes from marbl's own release tarball at the pinned version |
 | `microgwas-mlst` | `mlst.yaml` (`mlst=2.16`) | `staphb/mlst:2.16.2` | Adds GNU `parallel` and python for `sanitize_mlst.py` |
-| `microgwas-snpsites` | `snp-sites.yaml` (`snp-sites=2.5.1`, `bcftools=1.13`) | `staphb/snp-sites:2.5.1` | Adds bcftools 1.13 for the `aln2vcf` rule |
-| `microgwas-bcftools` | `bcftools.yaml` (`bcftools=1.13`) | `staphb/bcftools:1.13` | Adds biopython/pandas/pysam for `vcf2deleterious.py` |
+| `microgwas-snpsites` | `snp-sites.yaml` (`snp-sites=2.5.1`, `bcftools=1.13`) | `debian:bookworm-slim`, both tools from source | `aln2vcf` needs snp-sites *and* bcftools. Does not build on `staphb/snp-sites:2.5.1` — that image is EOL Ubuntu 21.04 whose apt repos 404 |
+| `microgwas-bcftools` | `bcftools.yaml` (`bcftools=1.13`) | `python:3.10-slim` + bcftools 1.13 from source | Adds biopython/pandas/pysam for `vcf2deleterious.py`. Does not build on `staphb/bcftools:1.13` — Ubuntu 16.04, pip 8.1.1, no setuptools |
 | `microgwas-snippy` | `nucmer.yaml` (`snippy=4.6.0`) | `staphb/snippy:4.6.0` | Composite upstream env; snippy vendors its own mummer/snpeff/bcftools |
-| `microgwas-panfeed` | `panfeed.yaml` (`panfeed>=1.6.1`) | `quay.io/biocontainers/panfeed` | |
+| `microgwas-panfeed` | `panfeed.yaml` (`panfeed>=1.6.1`) | `quay.io/biocontainers/panfeed` | Helper scripts arrive via multi-stage `COPY --from`; the base has no package manager |
 | `microgwas-enrich` | `enrich.yaml` | `mambaorg/micromamba` | goatools + scipy/statsmodels |
 | `microgwas-limix` | `limix.yaml` (`limix=3.0.4`) | `mambaorg/micromamba` | Also vendors the `albi` submodule needed by `run_heritability` |
 | `microgwas-eggnog` | `eggnog-mapper.yaml` | `quay.io/biocontainers/eggnog-mapper` | Adds the `eggnog-mapper-fixurl` pip patch |
@@ -60,15 +60,44 @@ than silently substituted — see `docs/workflows/multimodal_gwas.md` for detail
 
 ### Build status
 
-| Image | Built | Functionally tested |
-|---|---|---|
-| `microgwas-mash:2.1` | ✅ | ✅ `mash sketch` → `mash dist` → `square_mash` produces a square matrix labelled by bare sample ID |
-| `microgwas-mlst:2.16.2` | ✅ | Not yet |
-| all others | Not yet | Not yet |
+Verified on an amd64 build from a network that can reach quay.io, Docker Hub
+and PyPI but **not** `conda.anaconda.org` (blocked on the MGH network).
 
-The conda-based images (`base`, `pyseer`, `enrich`, `limix`) could not be built
-in the session that authored them, because `conda.anaconda.org` was unreachable
-from that network. Build them before the first Tier 1 run.
+| Image | Builds | Pushed | Notes |
+|---|---|---|---|
+| `microgwas-mash:2.1` | ✅ | ✅ | Also functionally tested: `mash sketch` → `mash dist` → `square_mash` yields a square matrix labelled by bare sample ID |
+| `microgwas-mlst:2.16.2` | ✅ | ✅ | |
+| `microgwas-snippy:4.6.0` | ✅ | ✅ | |
+| `microgwas-eggnog:2.1.13` | ✅ | ✅ | |
+| `microgwas-bcftools:1.13` | ✅ | — | |
+| `microgwas-snpsites:2.5.1` | ✅ | — | |
+| `microgwas-panfeed:1.6.1` | ✅ | — | |
+| `microgwas-base:0.9.1` | ⛔ conda | — | needs anaconda.org |
+| `microgwas-pyseer:1.4.2` | ⛔ conda | — | needs anaconda.org |
+| `microgwas-enrich:0.9.1` | ⛔ conda | — | needs anaconda.org |
+| `microgwas-limix:3.0.4` | ⛔ conda | — | needs anaconda.org |
+
+### Base images that could not be used as-is
+
+Three StaPH-B / biocontainers images turned out to be unusable as bases, each
+for a different reason. All three are documented in the relevant Dockerfile
+header; recorded here so the reasoning is not lost:
+
+- **`staphb/bcftools:1.13`** — Ubuntu 16.04 (Xenial), ships pip 8.1.1 with no
+  setuptools. Cannot install biopython or pandas at any version.
+- **`staphb/snp-sites:2.5.1`** — Ubuntu 21.04 ("hirsute"), which is end of
+  life. `archive.ubuntu.com` 404s for it, so `apt-get update` fails outright.
+- **`staphb/mash:2.1`** — same Xenial-era pip problem as bcftools.
+
+In each case the layering was inverted: a current base, with the pinned tool
+built from its own upstream release (marbl for mash, samtools for bcftools,
+the `v2.5.1` git tag for snp-sites). This keeps the version pins exact rather
+than drifting to whatever a distro or conda channel resolves.
+
+**`quay.io/biocontainers/panfeed:1.6.1`** has no package manager at all — no
+apt, no conda, no micromamba. The microGWAS helper scripts are fetched in a
+throwaway builder stage and `COPY --from`'d in, which places no requirements
+on the runtime base.
 
 ## busco-prokaryota
 

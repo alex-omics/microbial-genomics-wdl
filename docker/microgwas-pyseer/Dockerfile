@@ -35,10 +35,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # pyseer's well-behaved dependencies via conda
 # (everything except glmnet_py, which is broken in the conda channels)
+# numpy and scipy carry upstream's exact pins from workflow/envs/pyseer.yaml
+# (`numpy < 1.23.0`, `scipy=1.7.0`). These are not incidental: pyseer 1.4.x and
+# glmnet_python are built against the numpy 1.x C ABI, and an unpinned numpy
+# resolves to 2.x and fails at import with "numpy.dtype size changed".
 RUN micromamba install -y -n base -c conda-forge -c bioconda -c defaults \
     python=3.10 \
-    numpy \
-    scipy \
+    "numpy<1.23.0" \
+    "scipy==1.7.0" \
     pandas \
     scikit-learn \
     statsmodels \
