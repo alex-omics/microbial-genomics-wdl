@@ -30,7 +30,7 @@ license file travels with the vendored source at
 |---|---|---|---|
 | `microgwas-base` | `environment.yml` | `mambaorg/micromamba` | Shared python/pandas/biopython/gffutils image for the ~24 rules with no dedicated env, plus `ncbi-genome-download` for reference bootstrapping |
 | `microgwas-pyseer` | `pyseer.yaml` (`pyseer>=1.4.0`) | `mambaorg/micromamba` | pyseer 1.4.2 + bwa/bedtools for `map_back.py`. Supersedes `aarvani1/pyseer:1.4.0` |
-| `microgwas-mash` | `mash.yaml` (`mash=2.1`) | `staphb/mash:2.1` | Adds pyseer for the `square_mash` helper used by the `distance` rule |
+| `microgwas-mash` | `mash.yaml` (`mash=2.1`) | `python:3.10-slim` + marbl mash 2.1 release binary | Adds pyseer for the `square_mash` helper used by the `distance` rule. Does *not* build on `staphb/mash:2.1`: that image is Ubuntu-16.04-era (Python 3.5, pip 8.1.1) and cannot install a current pandas, so the layering is inverted and mash comes from marbl's own release tarball at the pinned version |
 | `microgwas-mlst` | `mlst.yaml` (`mlst=2.16`) | `staphb/mlst:2.16.2` | Adds GNU `parallel` and python for `sanitize_mlst.py` |
 | `microgwas-snpsites` | `snp-sites.yaml` (`snp-sites=2.5.1`, `bcftools=1.13`) | `staphb/snp-sites:2.5.1` | Adds bcftools 1.13 for the `aln2vcf` rule |
 | `microgwas-bcftools` | `bcftools.yaml` (`bcftools=1.13`) | `staphb/bcftools:1.13` | Adds biopython/pandas/pysam for `vcf2deleterious.py` |
@@ -57,6 +57,18 @@ than silently substituted — see `docs/workflows/multimodal_gwas.md` for detail
   (biocontainers jumps 1.0.9 → 1.1.0). The `find_amr_vag` rule it backs is a
   side-branch that produces no input to any association task, so no image is
   built here and the task defaults to a documented near-version.
+
+### Build status
+
+| Image | Built | Functionally tested |
+|---|---|---|
+| `microgwas-mash:2.1` | ✅ | ✅ `mash sketch` → `mash dist` → `square_mash` produces a square matrix labelled by bare sample ID |
+| `microgwas-mlst:2.16.2` | ✅ | Not yet |
+| all others | Not yet | Not yet |
+
+The conda-based images (`base`, `pyseer`, `enrich`, `limix`) could not be built
+in the session that authored them, because `conda.anaconda.org` was unreachable
+from that network. Build them before the first Tier 1 run.
 
 ## busco-prokaryota
 

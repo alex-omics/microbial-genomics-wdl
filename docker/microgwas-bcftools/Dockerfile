@@ -26,8 +26,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Versions pinned to match workflow/envs/bcftools.yaml exactly
-RUN pip3 install --no-cache-dir --break-system-packages \
+# Versions pinned to match workflow/envs/bcftools.yaml exactly.
+# --break-system-packages is needed on PEP 668 bases but does not exist before
+# pip 23.0, so probe for it rather than assuming either way.
+RUN PIP_EXTRA=""; \
+    if pip3 install --help 2>&1 | grep -q -- '--break-system-packages'; then \
+      PIP_EXTRA="--break-system-packages"; \
+    fi; \
+    pip3 install --no-cache-dir $PIP_EXTRA \
     "biopython==1.78" \
     "pandas==1.3.3" \
     "pysam==0.17.0"
@@ -43,7 +49,7 @@ ENV PATH="/opt/microgwas/workflow/scripts:${PATH}"
 ENV MICROGWAS_SCRIPTS="/opt/microgwas/workflow/scripts"
 # map_back.py does `from bwa import bwa_index`, and several other helpers
 # import their siblings, so the scripts dir must be importable, not just on PATH
-ENV PYTHONPATH="/opt/microgwas/workflow/scripts:${PYTHONPATH}"
+ENV PYTHONPATH="/opt/microgwas/workflow/scripts:${PYTHONPATH:-}"
 
 RUN bcftools --version | head -1 \
     && python3 -c "import Bio, pandas, pysam; print('python deps OK')" \

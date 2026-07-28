@@ -46,7 +46,7 @@ ENV PATH="/opt/microgwas/workflow/scripts:${PATH}"
 ENV MICROGWAS_SCRIPTS="/opt/microgwas/workflow/scripts"
 # map_back.py does `from bwa import bwa_index`, and several other helpers
 # import their siblings, so the scripts dir must be importable, not just on PATH
-ENV PYTHONPATH="/opt/microgwas/workflow/scripts:${PYTHONPATH}"
+ENV PYTHONPATH="/opt/microgwas/workflow/scripts:${PYTHONPATH:-}"
 
 RUN python -c "import goatools, scipy, pandas, statsmodels; print('enrich deps OK')" \
     && test -f /opt/microgwas/workflow/scripts/functional_enrichment.py \
