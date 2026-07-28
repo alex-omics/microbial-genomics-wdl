@@ -1,0 +1,21 @@
+{
+  "__comment_assemblies": "Local smoke-test inputs. Replace paths with gs:// URIs for Terra.",
+  "assembly_qc.assemblies": [
+    "tests/test_data/borrelia.fna",
+    "tests/test_data/ecoli.fna"
+  ],
+  "assembly_qc.sample_names": [
+    "Bburgdorferi_B31",
+    "Ecoli_K12_MG1655"
+  ],
+
+  "__comment_busco": "'auto' places each assembly in the prokaryote tree independently. Set e.g. 'spirochaetales_odb10' to force one dataset across all samples.",
+  "assembly_qc.busco_lineage": "auto",
+
+  "__comment_checkm2": "Strongly recommended. Without it, every scattered task downloads its own ~3 GB copy.",
+  "assembly_qc.checkm2_db": "gs://REPLACE-ME/checkm2/uniref100.KO.1.dmnd",
+
+  "assembly_qc.run_quast": true,
+  "assembly_qc.run_busco": true,
+  "assembly_qc.run_checkm2": true
+}

@@ -1,5 +1,24 @@
 # Changelog
 
+## 5.8.0 — 28 July 2026
+- Fixed: consolidated lineages back under `/busco_downloads`. 5.7.2 put them in
+  `/data/busco_downloads`, leaving two disjoint trees — `bacteria_odb10` and
+  `file_versions.tsv` lived at one path while the spirochaete sets lived at the other.
+  The task pointed at the latter, so only spirochaetes resolved and `--auto-lineage-prok`
+  could not work at all (no manifest at that path).
+- Added: the complete OrthoDB v10 prokaryote lineage set — 99 datasets, 1.5 GB compressed
+- Added: odb10 placement files (18), enabling fully offline `--auto-lineage-prok`
+- Changed: lineages are fetched at build time by `fetch_busco_data.sh` with md5
+  verification, rather than shipped through the build context. Keeps the repo small and
+  the build reproducible from git.
+- Note: the fetch pins **odb10**. Upstream's live manifest now also advertises ~740
+  OrthoDB v12 datasets, which BUSCO 5.7.x cannot consume; `busco --download prokaryota`
+  resolves to odb12 and fails on md5. The script resolves odb10 entries explicitly.
+- Note: the "S3 redirect issue" from 5.7.2 is `busco-data.ezlab.org` 301-ing to
+  `busco-data.s3.amazonaws.com`. Fetchers that do not follow redirects receive an HTML
+  error page. The script targets the S3 origin directly and uses `wget`, which follows
+  redirects by default (the base image has no `curl`).
+
 ## 5.7.2 — 23 June 2026
 - Fixed: corrected download path from /busco_downloads to /data/busco_downloads
 - Changed: switched from busco --download to COPY of pre-downloaded tarballs (S3 redirect issue)
