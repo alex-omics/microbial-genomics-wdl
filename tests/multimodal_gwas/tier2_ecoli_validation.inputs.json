@@ -1,0 +1,54 @@
+{
+  "_comment_purpose": "Tier 2 statistical fidelity run: reproduce the microGWAS paper's own E. coli virulence validation (Burgaya et al. 2025; phenotypes from Galardini et al. 2020, PLoS Genetics 16:e1009065).",
+
+  "_comment_genomes": "370 assemblies from https://figshare.com/ndownloader/files/21781689 (tar.gz). Stage them to GCS as SAMPLE.fasta and list every path in sample_fastas, or drive this from a Terra data table instead of this JSON.",
+
+  "_comment_phenotypes": "https://raw.githubusercontent.com/mgalardini/2018_ecoli_pathogenicity/master/data/phenotypes/phenotypes.tsv, with the ED1a and IAI39 rows deleted (they are reference strains here and would collide), and reshaped to strain/fasta/phenotype as the upstream tutorial's awk step does. Columns are strain, killed, phenotype - there are NO covariate columns, so `covariates` is deliberately omitted.",
+
+  "_comment_gffs": "Deliberately absent. The tutorial dataset is assemblies only, so the workflow runs ggCaller to call genes, exactly as upstream's aid_bootstrap.py arranges. Supplying sample_gffs would skip that.",
+
+  "_comment_bootstrap": "Mirrors: bash bootstrap.sh Escherichia coli IAI39 GCF_000013305.1,GCF_000007445.1,GCF_000026305.1,GCF_000026265.1,GCF_000026345.1,GCF_000005845.2,GCF_000026325.1,GCF_000013265.1",
+
+  "_comment_pass_criteria": "Recover the three iron-uptake associations (HPI, aerobactin, sitABCD operon) and the core-gene hits (zinT, mtfA, shiA), with a lasso whole-genome R^2 near 0.48. Read annotated_summary_unitigs / annotated_summary_gpa and the Manhattan plots. Same loci is the bar, not identical floating-point values.",
+
+  "_comment_cost": "Set a GCP billing alert before running. There is no reliable runtime/cost estimate for the 370-strain run yet, and a wiring bug that causes runaway compute is a plausible first-run failure mode.",
+
+  "wf_multimodal_gwas.samples_tsv": "gs://REPLACE_ME/microgwas_ecoli/data.tsv",
+  "wf_multimodal_gwas.sample_fastas": ["gs://REPLACE_ME/microgwas_ecoli/fastas/ECOR-01.fasta", "... 369 more ..."],
+
+  "wf_multimodal_gwas.targets": ["phenotype"],
+
+  "wf_multimodal_gwas.genus": "Escherichia",
+  "wf_multimodal_gwas.species": "coli",
+  "wf_multimodal_gwas.reference_strain": "IAI39",
+  "wf_multimodal_gwas.assembly_accessions": [
+    "GCF_000013305.1",
+    "GCF_000007445.1",
+    "GCF_000026305.1",
+    "GCF_000026265.1",
+    "GCF_000026345.1",
+    "GCF_000005845.2",
+    "GCF_000026325.1",
+    "GCF_000013265.1"
+  ],
+
+  "wf_multimodal_gwas.summary_references": "--reference 536 --reference CFT073 --reference ED1a --reference IAI1 --reference IAI39 --reference K-12_substr._MG1655 --reference UMN026 --reference UTI89",
+  "wf_multimodal_gwas.annotation_references": "--focus-strain 536 --focus-strain CFT073 --focus-strain ED1a --focus-strain IAI1 --focus-strain IAI39 --focus-strain K-12_substr._MG1655 --focus-strain UMN026 --focus-strain UTI89",
+  "wf_multimodal_gwas.enrichment_reference": "IAI39",
+
+  "wf_multimodal_gwas.mlst_scheme": "ecoli",
+
+  "_comment_filters": "Upstream's config ships loose defaults (10/1/25). The paper's own E. coli analysis used the stricter set below; these are the values to use when judging the pass criteria.",
+  "wf_multimodal_gwas.length": 30,
+  "wf_multimodal_gwas.min_hits": 9,
+  "wf_multimodal_gwas.max_genes": 10,
+
+  "wf_multimodal_gwas.eggnog_db_tarball": "gs://REPLACE_ME/eggnog/eggnog-mapper.tar.gz",
+
+  "wf_multimodal_gwas.run_panfeed": true,
+  "wf_multimodal_gwas.run_whole_genome_model": true,
+  "wf_multimodal_gwas.run_heritability": true,
+  "wf_multimodal_gwas.run_amr_screen": false,
+
+  "_comment_rare": "deleteriousness_dir_tarball is intentionally unset: Sequence UNET is out of scope for Milestone 1, and the paper reports the gene burden test as the one modality that did not reproduce. Leaving it unset skips the burden test and still runs the common-SNP association."
+}

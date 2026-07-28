@@ -1,0 +1,16 @@
+version: 1.2
+
+workflows:
+  - name: multimodal_gwas
+    subclass: WDL
+    primaryDescriptorPath: /workflows/multimodal_gwas/wf_multimodal_gwas.wdl
+    readMePath: /docs/workflows/multimodal_gwas.md
+    testParameterFiles:
+      - /tests/multimodal_gwas/tier1_smoke_test.inputs.json
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/multimodal-gwas

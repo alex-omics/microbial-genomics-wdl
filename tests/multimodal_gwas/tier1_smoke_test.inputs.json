@@ -1,0 +1,50 @@
+{
+  "_comment_purpose": "Tier 1 smoke test. Runs the ported WDL against microGWAS's own bundled small test dataset to confirm the DAG executes end-to-end and scatter logic resolves. This is a plumbing check, NOT a statistical one.",
+
+  "_comment_dataset": "Unpack test/small_fastas.tgz and test/stripped_small_gffs.tgz from the microGWAS repo, then rebuild the full GFFs the way test/run_tests.sh does (concatenate each stripped GFF, '##FASTA', then the matching assembly). Paths below assume that has been done under tests/test_data/microgwas_small/.",
+
+  "_comment_lineages": "The bundled genomes are too small for MLST to type, so upstream's own harness substitutes the canned test/lineages.txt. Passing it here as lineages_file skips the lineage_st task, matching that behaviour.",
+
+  "_comment_eggnog": "Upstream's harness swaps the full Bacteria database (taxid 2) for Gammaproteobacteria (taxid 1236) to keep the download manageable. Better still: run the download once, park the tarball in GCS, and set eggnog_db_tarball instead.",
+
+  "wf_multimodal_gwas.samples_tsv": "tests/test_data/microgwas_small/test_data.tsv",
+
+  "wf_multimodal_gwas.sample_fastas": [
+    "tests/test_data/microgwas_small/small_fastas/ECOR-01.fasta",
+    "tests/test_data/microgwas_small/small_fastas/ECOR-02.fasta",
+    "tests/test_data/microgwas_small/small_fastas/ECOR-03.fasta",
+    "tests/test_data/microgwas_small/small_fastas/ECOR-04.fasta"
+  ],
+  "wf_multimodal_gwas.sample_gffs": [
+    "tests/test_data/microgwas_small/small_gffs/ECOR-01.gff",
+    "tests/test_data/microgwas_small/small_gffs/ECOR-02.gff",
+    "tests/test_data/microgwas_small/small_gffs/ECOR-03.gff",
+    "tests/test_data/microgwas_small/small_gffs/ECOR-04.gff"
+  ],
+
+  "wf_multimodal_gwas.targets": ["phenotype"],
+
+  "_comment_covariates": "Deliberately NOT set, even though test_data.tsv carries synthetic covariate1/covariate2 columns (6 and 7) and upstream's config documents '--use-covariates 6q 7' as the example. prepare_pyseer.py reduces the phenotype file to just the index plus the single target column before pyseer sees it, so 1-based columns 6 and 7 do not exist in the file pyseer is handed. Upstream never caught this because its CI only ever ran a Snakemake dry run. Confirm against a real run before relying on covariates; the Tier 2 E. coli dataset has no covariate columns, so this does not block validation.",
+
+  "wf_multimodal_gwas.genus": "Escherichia",
+  "wf_multimodal_gwas.species": "coli",
+  "wf_multimodal_gwas.reference_strain": "536",
+  "wf_multimodal_gwas.assembly_accessions": [],
+  "wf_multimodal_gwas.local_reference_fastas": ["tests/test_data/microgwas_small/local_assemblies/536.fasta"],
+  "wf_multimodal_gwas.local_reference_gffs":   ["tests/test_data/microgwas_small/local_assemblies/536.gff"],
+  "wf_multimodal_gwas.local_reference_gbks":   ["tests/test_data/microgwas_small/local_assemblies/536.gbk"],
+
+  "wf_multimodal_gwas.summary_references": "--reference 536",
+  "wf_multimodal_gwas.annotation_references": "--focus-strain 536",
+  "wf_multimodal_gwas.enrichment_reference": "536",
+
+  "wf_multimodal_gwas.mlst_scheme": "ecoli",
+  "wf_multimodal_gwas.lineages_file": "tests/test_data/microgwas_small/lineages.txt",
+
+  "wf_multimodal_gwas.eggnog_taxid": "1236",
+
+  "wf_multimodal_gwas.run_panfeed": true,
+  "wf_multimodal_gwas.run_whole_genome_model": true,
+  "wf_multimodal_gwas.run_heritability": true,
+  "wf_multimodal_gwas.run_amr_screen": false
+}
