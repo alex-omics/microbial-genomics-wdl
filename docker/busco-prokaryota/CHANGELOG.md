@@ -18,6 +18,12 @@
   `busco-data.s3.amazonaws.com`. Fetchers that do not follow redirects receive an HTML
   error page. The script targets the S3 origin directly and uses `wget`, which follows
   redirects by default (the base image has no `curl`).
+- Size: ~1.75 GB compressed, ~10 GB unpacked (the lineage layer alone is 1.51 GB
+  compressed). Tasks using this image need `bootDiskSizeGb` above Cromwell's 10 GB
+  default or the pull fails before the task starts.
+- Digest: sha256:dd2c2cf6b9e225ff9b1ab5fcbefc98837fef9865549d2313b2be8cd855ecd894
+  - Verified against the registry, not just locally. Pin with:
+    `aarvani1/busco-prokaryota@sha256:dd2c2cf6b9e225ff9b1ab5fcbefc98837fef9865549d2313b2be8cd855ecd894`
 
 ## 5.7.2 — 23 June 2026
 - Fixed: corrected download path from /busco_downloads to /data/busco_downloads
