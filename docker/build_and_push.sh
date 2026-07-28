@@ -61,10 +61,38 @@ for arg in "$@"; do
 done
 
 if $PUSH; then
-  # Fail before spending 20 minutes building rather than after
-  if ! docker system info 2>/dev/null | grep -q "Username:"; then
-    echo "ERROR: --push given but you are not logged in. Run: docker login" >&2
-    exit 1
+  # Advisory pre-flight only: warn before spending 20 minutes building, but do
+  # not block on it. There is no reliable, stable way to ask Docker "am I
+  # logged in" — `docker system info` stopped emitting a Username: line in
+  # recent Docker Desktop, and credentials may live in a credential helper
+  # rather than in config.json. The real authority is the push itself, so a
+  # guess about internal state must never be able to veto a valid run.
+  logged_in=false
+
+  creds_store="$(python3 -c "
+import json, os
+p = os.path.expanduser('~/.docker/config.json')
+try:
+    print(json.load(open(p)).get('credsStore', ''))
+except Exception:
+    print('')
+" 2>/dev/null || true)"
+
+  if [[ -n "$creds_store" ]] && command -v "docker-credential-${creds_store}" > /dev/null 2>&1; then
+    if "docker-credential-${creds_store}" list 2>/dev/null | grep -q 'index.docker.io'; then
+      logged_in=true
+    fi
+  fi
+
+  if ! $logged_in && grep -q 'index.docker.io' "${HOME}/.docker/config.json" 2>/dev/null; then
+    logged_in=true
+  fi
+
+  if ! $logged_in; then
+    echo "WARNING: could not confirm a Docker Hub login from this machine's config." >&2
+    echo "         If the push fails with 'denied', run: docker login" >&2
+    echo "         Continuing anyway — this check is advisory, not authoritative." >&2
+    echo >&2
   fi
 fi
 
