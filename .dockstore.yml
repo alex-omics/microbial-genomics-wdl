@@ -1,0 +1,44 @@
+version: 1.2
+
+# Dockstore registration for microbial-genomics-wdl.
+#
+# Both workflows are listed here even though each currently lives on its own
+# feature branch. The `filters.branches` list is per-workflow, so Dockstore only
+# looks for a descriptor on branches where it actually exists — registering
+# assembly_qc does not make Dockstore go hunting for the GWAS descriptor on the
+# assembly-qc branch, and vice versa.
+#
+# Keeping one identical file on every branch also means this does not conflict
+# when the feature branches eventually merge into main.
+#
+# Paths are absolute from the repository root and must begin with a slash.
+
+workflows:
+
+  - name: assembly_qc
+    subclass: WDL
+    primaryDescriptorPath: /workflows/assembly_qc/assembly_qc.wdl
+    readMePath: /workflows/assembly_qc/README.md
+    testParameterFiles:
+      - /tests/assembly_qc_terra_inputs.json
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/assembly-qc-tasks
+
+  - name: multimodal_gwas
+    subclass: WDL
+    primaryDescriptorPath: /workflows/multimodal_gwas/wf_multimodal_gwas.wdl
+    readMePath: /docs/workflows/multimodal_gwas.md
+    testParameterFiles:
+      - /tests/multimodal_gwas/tier1_smoke_test.inputs.json
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/multimodal-gwas
