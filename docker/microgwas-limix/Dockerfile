@@ -33,9 +33,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# limix 3.0.4 predates python 3.9 wheels for several of its deps
+# Python is 3.7, and that is forced rather than chosen. limix 3.0.4 requires
+# bgen-reader >= 3.0.6. On python 3.8+ the only viable bgen-readers (4.0.7,
+# 4.0.8) require pandas >= 1.1.1, which collides head-on with upstream's
+# `pandas < 1.1.0` pin. The bgen-readers that do accept old pandas (3.0.6,
+# 3.0.7) are built for python 3.7 only. So 3.7 is the single interpreter where
+# limix 3.0.4 and pandas < 1.1.0 can coexist, which is presumably what upstream's
+# own solver lands on given `python >= 3.7`.
 RUN micromamba install -y -n base -c conda-forge -c bioconda -c defaults \
-    python=3.8 \
+    python=3.7 \
     "pandas<1.1.0" \
     "numpy<1.21" \
     scipy \

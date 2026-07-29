@@ -60,22 +60,27 @@ than silently substituted — see `docs/workflows/multimodal_gwas.md` for detail
 
 ### Build status
 
-Verified on an amd64 build from a network that can reach quay.io, Docker Hub
-and PyPI but **not** `conda.anaconda.org` (blocked on the MGH network).
+All eleven images build clean on `linux/amd64` and pass their in-image
+verification. Pinned versions confirmed at runtime: pyseer 1.4.2 on
+numpy 1.22.4 / scipy 1.7.0 (upstream: `numpy < 1.23.0`, `scipy=1.7.0`);
+limix 3.0.4 on pandas 1.0.5 (upstream: `pandas < 1.1.0`).
 
-| Image | Builds | Pushed | Notes |
-|---|---|---|---|
-| `microgwas-mash:2.1` | ✅ | ✅ | Also functionally tested: `mash sketch` → `mash dist` → `square_mash` yields a square matrix labelled by bare sample ID |
-| `microgwas-mlst:2.16.2` | ✅ | ✅ | |
-| `microgwas-snippy:4.6.0` | ✅ | ✅ | |
-| `microgwas-eggnog:2.1.13` | ✅ | ✅ | |
-| `microgwas-bcftools:1.13` | ✅ | — | |
-| `microgwas-snpsites:2.5.1` | ✅ | — | |
-| `microgwas-panfeed:1.6.1` | ✅ | — | |
-| `microgwas-base:0.9.1` | ⛔ conda | — | needs anaconda.org |
-| `microgwas-pyseer:1.4.2` | ⛔ conda | — | needs anaconda.org |
-| `microgwas-enrich:0.9.1` | ⛔ conda | — | needs anaconda.org |
-| `microgwas-limix:3.0.4` | ⛔ conda | — | needs anaconda.org |
+`microgwas-mash` is additionally functionally tested: `mash sketch` →
+`mash dist` → `square_mash` yields a square matrix labelled by bare sample ID.
+
+### Interpreter versions are constrained, not chosen
+
+Two images cannot use a current Python, and the reason is worth recording
+because it looks like carelessness otherwise:
+
+- **`microgwas-pyseer` is Python 3.9.** Upstream pins `scipy=1.7.0`, which
+  publishes no cp310 build. Upstream's own env says only `python >= 3.7` and
+  lets the solver pick; 3.9 is the newest interpreter that pin admits.
+- **`microgwas-limix` is Python 3.7.** limix 3.0.4 requires
+  `bgen-reader >= 3.0.6`. On Python 3.8+ the only viable bgen-readers require
+  `pandas >= 1.1.1`, which collides with upstream's `pandas < 1.1.0`. The
+  bgen-readers that accept old pandas are Python 3.7-only. 3.7 is the single
+  interpreter where limix 3.0.4 and `pandas < 1.1.0` coexist.
 
 ### Base images that could not be used as-is
 

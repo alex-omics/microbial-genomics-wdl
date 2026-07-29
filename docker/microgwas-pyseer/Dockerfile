@@ -39,8 +39,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # (`numpy < 1.23.0`, `scipy=1.7.0`). These are not incidental: pyseer 1.4.x and
 # glmnet_python are built against the numpy 1.x C ABI, and an unpinned numpy
 # resolves to 2.x and fails at import with "numpy.dtype size changed".
+#
+# Python is 3.9, not 3.10: scipy 1.7.0 publishes no cp310 build (its newest is
+# cp39), so pinning python=3.10 makes the environment unsolvable. Upstream
+# never hits this because pyseer.yaml only says `python >= 3.7` and lets the
+# solver pick; 3.9 is the newest interpreter its scipy pin admits.
 RUN micromamba install -y -n base -c conda-forge -c bioconda -c defaults \
-    python=3.10 \
+    python=3.9 \
     "numpy<1.23.0" \
     "scipy==1.7.0" \
     pandas \
@@ -106,7 +111,13 @@ RUN pyseer --version \
     && python -c "import pyseer; print('pyseer imported successfully')" \
     && python -c "import glmnet_python; print('glmnet_py imported successfully')" \
     && python -c "import pybedtools; print('pybedtools imported successfully')" \
-    && bwa 2>&1 | grep -q Version \
+    # bwa's banner is captured to a file rather than piped into grep. micromamba's
+    # RUN wrapper (_dockerfile_shell.sh) sets `-o pipefail`, and `grep -q` exits
+    # the moment it matches, which SIGPIPEs bwa (141) and fails the pipeline even
+    # though the check succeeded. bwa with no args also exits non-zero by design,
+    # hence the `|| true`.
+    && { bwa > /tmp/bwa_banner.txt 2>&1 || true; } \
+    && grep -q Version /tmp/bwa_banner.txt \
     && test -f /opt/microgwas/workflow/scripts/count_patterns.py \
     && test -f /opt/microgwas/LICENSE \
     && echo "=== All checks passed ==="
