@@ -1,5 +1,7 @@
 {
-  "__comment_assemblies": "Local smoke-test inputs. Replace paths with gs:// URIs for Terra.",
+  "__comment": "LOCAL smoke-test inputs, for miniwdl/Cromwell on your own machine. For a Terra run use assembly_qc_terra_inputs.json instead — miniwdl cannot read gs:// URIs.",
+
+  "__comment_assemblies": "These FASTAs are not committed (sequence files are gitignored, and they are large). Fetch them before running: B. burgdorferi B31 (GCF_000008685.2) and E. coli K-12 MG1655 (GCF_000005845.2) from NCBI.",
   "assembly_qc.assemblies": [
     "tests/test_data/borrelia.fna",
     "tests/test_data/ecoli.fna"
@@ -12,8 +14,8 @@
   "__comment_busco": "'auto' places each assembly in the prokaryote tree independently. Set e.g. 'spirochaetales_odb10' to force one dataset across all samples.",
   "assembly_qc.busco_lineage": "auto",
 
-  "__comment_checkm2": "Strongly recommended. Without it, every scattered task downloads its own ~3 GB copy.",
-  "assembly_qc.checkm2_db": "gs://REPLACE-ME/checkm2/uniref100.KO.1.dmnd",
+  "__comment_checkm2": "Local path to the CheckM2 DIAMOND database (~2.9 GB). This is the reference database, NOT the DIAMOND aligner binary — the aligner already ships inside staphb/checkm2:1.1.0.",
+  "assembly_qc.checkm2_db": "/Users/aa2084/databases/CheckM2_database/uniref100.KO.1.dmnd",
 
   "assembly_qc.run_quast": true,
   "assembly_qc.run_busco": true,
