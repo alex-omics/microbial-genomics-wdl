@@ -1,0 +1,8 @@
+version: 1.2
+workflows:
+  - name: assembly_qc
+    primaryDescriptorPath: /workflows/assembly_qc/assembly_qc.wdl
+    filters: { branches: [main, feature/assembly-qc-tasks] }
+  - name: multimodal_gwas
+    primaryDescriptorPath: /workflows/multimodal_gwas/wf_multimodal_gwas.wdl
+    filters: { branches: [main, feature/multimodal-gwas] }
