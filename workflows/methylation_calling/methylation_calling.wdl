@@ -30,8 +30,14 @@ workflow methylation_calling {
         Boolean         run_find_motifs   = true
         Boolean         run_pangenome     = true
 
+        # Reuse a pangenome already built by workflows/pangenome rather than
+        # recomputing it here. Its isolate column names must match this run's
+        # sample names.
+        File?           gene_presence_absence
+
         String          panaroo_clean_mode = "strict"
         Float           core_threshold     = 0.95
+        Boolean         merge_paralogs     = false
 
         # modkit
         Boolean         no_filtering      = false
@@ -191,18 +197,22 @@ workflow methylation_calling {
     # role once every isolate has been assembled and annotated independently,
     # so the pangenome is what turns a stack of per-isolate catalogues into a
     # gene-by-isolate matrix.
-    if (run_bakta && run_pangenome) {
+    if (run_bakta && run_pangenome && !defined(gene_presence_absence)) {
         call panaroo_task.panaroo {
             input:
                 gff3s          = select_all(bakta.gff3),
                 fnas           = select_all(bakta.fna),
                 clean_mode     = panaroo_clean_mode,
-                core_threshold = core_threshold
+                core_threshold = core_threshold,
+                merge_paralogs = merge_paralogs
         }
+    }
 
+    if (run_bakta && (run_pangenome || defined(gene_presence_absence))) {
         call ortholog_task.methylation_orthologs {
             input:
-                gene_presence_absence = panaroo.gene_presence_absence,
+                gene_presence_absence = select_first([gene_presence_absence,
+                                                      panaroo.gene_presence_absence]),
                 annotated_tables      = select_all(annotate_methylation.annotated_tsv),
                 sample_names          = resolved_name
         }
