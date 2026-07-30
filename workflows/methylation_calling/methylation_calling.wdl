@@ -2,25 +2,29 @@ version 1.0
 
 import "../../tasks/align_modbam.wdl" as align_task
 import "../../tasks/modkit.wdl" as modkit_task
+import "../../tasks/bakta.wdl" as bakta_task
 import "../../tasks/annotate_methylation.wdl" as annotate_task
 
 workflow methylation_calling {
 
     meta {
-        description: "Per-sample bacterial methylation calling from ONT modified-basecalled BAMs. Aligns modBAMs to a common reference, pileups 6mA/4mC/5mC with modkit, joins the calls to the reference annotation, and collapses everything into one long-format table keyed by locus tag for comparative methylomics and multi-omics integration."
+        description: "Per-isolate bacterial methylation calling from ONT modified-basecalled BAMs. Each isolate's reads are mapped to its OWN assembly, pileup'd with modkit, scanned for methylated motifs, and joined to a Bakta annotation of that same assembly. Self-mapping is deliberate: for an organism with substantial accessory genome and frequent rearrangement, no single reference is adequate, and motif discovery against a foreign reference reads sequence context that the isolate does not actually have."
         author: "Alex Arvanitis"
     }
 
     input {
         Array[File]     modbams
+        Array[File]     assemblies
         Array[String]?  sample_names
 
-        # Every sample must go against the SAME reference. Cross-sample
-        # comparison is coordinate-based, so a per-isolate reference would give
-        # each sample its own incompatible coordinate space.
-        File            reference_fasta
-        File            reference_gff
+        # Trusted proteins for Bakta's first-pass CDS assignment. Supplying the
+        # PAO1 proteome transfers PAO1 gene names and products onto each
+        # isolate's own genes, which is what makes independently-annotated
+        # isolates comparable without forcing them into shared coordinates.
+        File?           proteins
+        File?           bakta_db
 
+        Boolean         run_bakta         = true
         Boolean         run_find_motifs   = true
 
         # modkit
@@ -29,32 +33,35 @@ workflow methylation_calling {
         Int             min_coverage      = 10
         Float           min_percent       = 50.0
 
+        # Self-mapping should comfortably exceed this; the floor exists to catch
+        # modbams and assemblies passed in mismatched order.
+        Float           min_mapped_percent = 85.0
+
         # Annotation
         Int             flank_upstream     = 300
         Boolean         trim_to_intergenic = true
         String          feature_type       = "CDS"
+
+        String          genus              = "Pseudomonas"
+        String          species            = "aeruginosa"
 
         String          summary_basename   = "methylation_summary"
         String          merged_basename    = "methylation_calls_long"
     }
 
     parameter_meta {
-        modbams:            "Modified-basecalled BAMs, one per sample, carrying MM/ML tags. Unaligned is the expected input; already-aligned files are reduced to primary records and realigned."
+        modbams:            "Modified-basecalled BAMs, one per isolate, carrying MM/ML tags"
+        assemblies:         "Each isolate's own assembly, positionally matched to modbams. Produced upstream (TheiaProk ONT, Autocycler, etc.) — this workflow does not assemble."
         sample_names:       "Optional labels, positionally matched to modbams. If omitted, names are derived from each filename."
-        reference_fasta:    "Common reference for all samples (e.g. PAO1). Comparative methylomics requires one shared coordinate space."
-        reference_gff:      "Annotation matching reference_fasta. Use the reference's own curated GFF so locus tags join cleanly to transcriptomics and proteomics."
-        run_find_motifs:    "Run de novo motif discovery per sample. Strongly recommended for multi-isolate studies: the motif inventory reports which restriction-modification systems each isolate carries, which is the control needed before calling any cross-isolate difference regulatory (default = true)"
+        proteins:           "FASTA of trusted proteins for Bakta --proteins, e.g. the PAO1 proteome"
+        bakta_db:           "Optional .tar.gz of the full Bakta database. Omitted, the light database baked into the staphb image is used."
+        run_bakta:          "Annotate each assembly with Bakta. Turn off only if supplying annotations another way (default = true)"
+        run_find_motifs:    "Per-isolate de novo motif discovery. The motif inventory is a primary characterisation axis here, effectively reporting which restriction-modification systems each isolate carries (default = true)"
         min_coverage:       "Minimum Nvalid_cov for a site to be counted or annotated (default = 10)"
         min_percent:        "Minimum percent-modified for a site to count as methylated in summary stats (default = 50.0)"
+        min_mapped_percent: "Mapping-rate floor, as a guard against mismatched modbam/assembly pairs (default = 85.0)"
         flank_upstream:     "Bases upstream of each CDS treated as putative promoter region (default = 300)"
         trim_to_intergenic: "Trim upstream windows that run into neighbouring genes (default = true)"
-    }
-
-    # Indexing once and passing the .fai around beats re-indexing the reference
-    # inside every scattered task.
-    call index_reference {
-        input:
-            reference_fasta = reference_fasta
     }
 
     scatter (i in range(length(modbams))) {
@@ -63,11 +70,13 @@ workflow methylation_calling {
             then select_first([sample_names])[i]
             else sub(basename(modbams[i]), "\\.(bam|modbam)$", "")
 
+        # Everything below is in this isolate's own coordinate space.
         call align_task.align_modbam {
             input:
-                modbam          = modbams[i],
-                sample_name     = resolved_name,
-                reference_fasta = reference_fasta
+                modbam             = modbams[i],
+                sample_name        = resolved_name,
+                reference_fasta    = assemblies[i],
+                min_mapped_percent = min_mapped_percent
         }
 
         call modkit_task.modkit_pileup {
@@ -75,23 +84,11 @@ workflow methylation_calling {
                 aligned_bam       = align_modbam.aligned_bam,
                 aligned_bam_index = align_modbam.aligned_bam_index,
                 sample_name       = resolved_name,
-                reference_fasta   = reference_fasta,
+                reference_fasta   = assemblies[i],
                 no_filtering      = no_filtering,
                 filter_threshold  = filter_threshold,
                 min_coverage      = min_coverage,
                 min_percent       = min_percent
-        }
-
-        call annotate_task.annotate_methylation {
-            input:
-                bedmethyl          = modkit_pileup.bedmethyl,
-                sample_name        = resolved_name,
-                reference_gff      = reference_gff,
-                reference_fai      = index_reference.fai,
-                flank_upstream     = flank_upstream,
-                trim_to_intergenic = trim_to_intergenic,
-                min_coverage       = min_coverage,
-                feature_type       = feature_type
         }
 
         if (run_find_motifs) {
@@ -99,12 +96,35 @@ workflow methylation_calling {
                 input:
                     bedmethyl       = modkit_pileup.bedmethyl,
                     sample_name     = resolved_name,
-                    reference_fasta = reference_fasta
+                    reference_fasta = assemblies[i]
             }
         }
 
-        # One row per sample. Everything stringified and NA-defaulted so the
-        # table stays rectangular whether or not motif discovery ran.
+        if (run_bakta) {
+            call bakta_task.bakta {
+                input:
+                    assembly    = assemblies[i],
+                    sample_name = resolved_name,
+                    bakta_db    = bakta_db,
+                    proteins    = proteins,
+                    genus       = genus,
+                    species     = species,
+                    strain      = resolved_name
+            }
+
+            call annotate_task.annotate_methylation {
+                input:
+                    bedmethyl          = modkit_pileup.bedmethyl,
+                    sample_name        = resolved_name,
+                    reference_gff      = bakta.gff3,
+                    reference_fai      = align_modbam.reference_fai,
+                    flank_upstream     = flank_upstream,
+                    trim_to_intergenic = trim_to_intergenic,
+                    min_coverage       = min_coverage,
+                    feature_type       = feature_type
+            }
+        }
+
         Array[String] summary_row = [
             resolved_name,
             align_modbam.percent_mapped,
@@ -116,11 +136,15 @@ workflow methylation_calling {
             modkit_pileup.mean_percent_6ma,
             modkit_pileup.mean_percent_4mc,
             modkit_pileup.mean_percent_5mc,
-            "~{annotate_methylation.n_genic}",
-            "~{annotate_methylation.n_upstream}",
-            "~{annotate_methylation.n_loci_with_methylation}",
             if defined(modkit_find_motifs.n_motifs) then "~{modkit_find_motifs.n_motifs}" else "NA",
             if defined(modkit_find_motifs.motifs)   then "~{modkit_find_motifs.motifs}"   else "NA",
+            if defined(bakta.n_contigs)             then "~{bakta.n_contigs}"             else "NA",
+            if defined(bakta.genome_size)           then "~{bakta.genome_size}"           else "NA",
+            if defined(bakta.n_cds)                 then "~{bakta.n_cds}"                 else "NA",
+            if defined(annotate_methylation.n_genic)    then "~{annotate_methylation.n_genic}"    else "NA",
+            if defined(annotate_methylation.n_upstream) then "~{annotate_methylation.n_upstream}" else "NA",
+            if defined(annotate_methylation.n_loci_with_methylation)
+                then "~{annotate_methylation.n_loci_with_methylation}" else "NA",
             modkit_pileup.modkit_version
         ]
     }
@@ -129,8 +153,10 @@ workflow methylation_calling {
         "sample", "percent_mapped", "mean_depth", "positions_covered",
         "n_sites_6mA", "n_sites_4mC", "n_sites_5mC",
         "mean_percent_6mA", "mean_percent_4mC", "mean_percent_5mC",
+        "n_motifs", "motifs",
+        "n_contigs", "genome_size", "n_cds",
         "n_genic_sites", "n_upstream_sites", "n_loci_with_methylation",
-        "n_motifs", "motifs", "modkit_version"
+        "modkit_version"
     ]
 
     call name_summary {
@@ -139,31 +165,38 @@ workflow methylation_calling {
             basename = summary_basename
     }
 
-    # The long-format table is the actual deliverable for comparative work:
-    # one row per (sample, site, feature), keyed by locus tag so it joins
-    # directly against expression or abundance matrices.
-    call merge_annotated {
-        input:
-            annotated_tables = annotate_methylation.annotated_tsv,
-            basename         = merged_basename
+    # Rows carry each isolate's own locus tags, so this concatenation is a
+    # per-isolate catalogue rather than a cross-isolate matrix. Comparing
+    # isolates to each other needs an orthology layer to map those tags onto
+    # shared gene groups; coordinates cannot do that job across independent
+    # assemblies.
+    if (run_bakta) {
+        call merge_annotated {
+            input:
+                annotated_tables = select_all(annotate_methylation.annotated_tsv),
+                basename         = merged_basename
+        }
     }
 
     output {
-        File summary_tsv        = name_summary.summary
-        File methylation_long   = merge_annotated.merged
+        File  summary_tsv          = name_summary.summary
+        File? methylation_long     = merge_annotated.merged
 
-        Array[File] aligned_bams        = align_modbam.aligned_bam
-        Array[File] aligned_bam_indexes = align_modbam.aligned_bam_index
-        Array[File] flagstats           = align_modbam.flagstat
+        Array[File] aligned_bams         = align_modbam.aligned_bam
+        Array[File] aligned_bam_indexes  = align_modbam.aligned_bam_index
+        Array[File] flagstats            = align_modbam.flagstat
+        Array[File] coverage_reports     = align_modbam.coverage_txt
 
-        Array[File] bedmethyl_gz        = modkit_pileup.bedmethyl_gz
-        Array[File] bed_6ma             = modkit_pileup.bed_6ma
-        Array[File] bed_4mc             = modkit_pileup.bed_4mc
-        Array[File] bed_5mc             = modkit_pileup.bed_5mc
+        Array[File] bedmethyl_gz         = modkit_pileup.bedmethyl_gz
+        Array[File] bed_6ma              = modkit_pileup.bed_6ma
+        Array[File] bed_4mc              = modkit_pileup.bed_4mc
+        Array[File] bed_5mc              = modkit_pileup.bed_5mc
 
-        Array[File] annotated_tables    = annotate_methylation.annotated_tsv
-
-        Array[File?] motif_tables       = modkit_find_motifs.motifs_tsv
+        Array[File?] motif_tables        = modkit_find_motifs.motifs_tsv
+        Array[File?] bakta_gff3          = bakta.gff3
+        Array[File?] bakta_faa           = bakta.faa
+        Array[File?] bakta_tsv           = bakta.annotation_tsv
+        Array[File?] annotated_tables    = annotate_methylation.annotated_tsv
     }
 }
 
@@ -197,31 +230,6 @@ task name_summary {
     }
 }
 
-task index_reference {
-    input {
-        File reference_fasta
-    }
-
-    command <<<
-        set -euo pipefail
-        cp ~{reference_fasta} ref.fa
-        samtools faidx ref.fa
-    >>>
-
-    output {
-        File fai = "ref.fa.fai"
-    }
-
-    runtime {
-        docker:         "staphb/samtools:1.24"
-        memory:         "4 GB"
-        cpu:            1
-        disks:          "local-disk 20 SSD"
-        preemptible:    1
-        maxRetries:     2
-    }
-}
-
 task merge_annotated {
     input {
         Array[File] annotated_tables
@@ -231,8 +239,6 @@ task merge_annotated {
     command <<<
         set -euo pipefail
 
-        # Header from the first table, then every table's body. Each row already
-        # carries its sample name, so the result is tidy long format.
         head -n1 ~{annotated_tables[0]} > "~{basename}.tsv"
         for f in ~{sep=' ' annotated_tables}; do
             awk 'NR>1' "${f}" >> "~{basename}.tsv"

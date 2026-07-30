@@ -6,22 +6,24 @@ task align_modbam {
         File    modbam
         String  sample_name
         File    reference_fasta
-        String  minimap2_preset = "map-ont"
-        Int     cpu             = 8
-        Int     mem_gb          = 32
-        Int     disk_gb         = 150
-        String  docker          = "nanozoo/minimap2:2.31--c2b4c91"
+        String  minimap2_preset     = "map-ont"
+        Float   min_mapped_percent  = 0
+        Int     cpu                 = 8
+        Int     mem_gb              = 32
+        Int     disk_gb             = 150
+        String  docker              = "nanozoo/minimap2:2.31--c2b4c91"
     }
 
     parameter_meta {
-        modbam:          "Modified-basecalled BAM from dorado / ont_basecall_client, carrying MM and ML tags. Aligned or unaligned both work; an aligned input is reduced back to primary records in original orientation before realignment."
-        sample_name:     "Some identifier for naming outputs"
-        reference_fasta: "Reference to align against. For comparative methylomics across isolates this must be the SAME reference for every sample, or the resulting bedMethyl files share no coordinate space."
-        minimap2_preset: "minimap2 -x preset (default = map-ont)"
-        cpu:             "Number of CPUs delegated to task (default = 8)"
-        mem_gb:          "Amount of memory in GB delegated to task (default = 32)"
-        disk_gb:         "Amount of disk space in GB delegated to task (default = 150)"
-        docker:          "Container image. Needs minimap2 and samtools together; staphb/minimap2 ships minimap2 alone, which is why this points at nanozoo."
+        modbam:             "Modified-basecalled BAM from dorado / ont_basecall_client, carrying MM and ML tags. Aligned or unaligned both work; an aligned input is reduced back to primary records in original orientation before realignment."
+        sample_name:        "Some identifier for naming outputs"
+        reference_fasta:    "Sequence to align against. The intended use is each isolate's OWN assembly: self-mapping keeps every modification call in the isolate's native coordinates and, critically, means motif discovery reads sequence context from the isolate's real sequence rather than a reference's."
+        minimap2_preset:    "minimap2 -x preset (default = map-ont)"
+        min_mapped_percent: "Fail the task if fewer than this percent of primary reads map. Self-mapping should exceed 95%; a low rate almost always means the modbam and the assembly belong to different isolates. 0 disables the check (default = 0)"
+        cpu:                "Number of CPUs delegated to task (default = 8)"
+        mem_gb:             "Amount of memory in GB delegated to task (default = 32)"
+        disk_gb:            "Amount of disk space in GB delegated to task (default = 150)"
+        docker:             "Container image. Needs minimap2 and samtools together; staphb/minimap2 ships minimap2 alone, which is why this points at nanozoo."
     }
 
     command <<<
@@ -39,7 +41,15 @@ task align_modbam {
         fi
         echo "Input carries MM tags (${INPUT_MM} of first 10000 records)"
 
-        samtools faidx ~{reference_fasta} 2>/dev/null || true
+        # Stage the reference locally so the .fai lands somewhere writable and
+        # can be emitted as an output; downstream tasks need it and re-indexing
+        # per task is wasted work. Bakta does not read gzipped FASTA either, so
+        # decompress here and keep one canonical copy.
+        case "~{reference_fasta}" in
+            *.gz) gunzip -c ~{reference_fasta} > ref.fa ;;
+            *)    cp ~{reference_fasta} ref.fa ;;
+        esac
+        samtools faidx ref.fa
 
         # Three things here are load-bearing:
         #
@@ -60,7 +70,7 @@ task align_modbam {
         #                -y is what copies that comment back out as SAM tags.
         #                Without it the tags reach minimap2 and die there.
         samtools fastq -@ ~{cpu} -T MM,ML,MN -F 0x900 ~{modbam} \
-            | minimap2 -y -ax ~{minimap2_preset} --MD -t ~{cpu} ~{reference_fasta} - \
+            | minimap2 -y -ax ~{minimap2_preset} --MD -t ~{cpu} ref.fa - \
             | samtools sort -@ ~{cpu} -o ~{sample_name}.aligned.bam -
 
         samtools index -@ ~{cpu} ~{sample_name}.aligned.bam
@@ -89,12 +99,29 @@ task align_modbam {
              END {if (bases>0) printf "%.2f\n", total/bases; else print "NA"}' \
             ~{sample_name}_coverage.txt > MEAN_DEPTH
 
+        # modbams and assemblies are matched positionally by the caller, which
+        # is easy to get wrong and produces no error on its own — just a quietly
+        # terrible alignment. A self-mapping run that maps poorly is almost
+        # always a mismatched pair.
+        MIN_PCT="~{min_mapped_percent}"
+        MAPPED="$(cat MAPPED_PCT)"
+        if [ "${MIN_PCT}" != "0" ] && [ "${MIN_PCT}" != "0.0" ] && [ "${MAPPED}" != "NA" ]; then
+            if awk -v m="${MAPPED}" -v t="${MIN_PCT}" 'BEGIN {exit !(m < t)}'; then
+                echo "ERROR: only ${MAPPED}% of primary reads mapped, below the ${MIN_PCT}% floor." >&2
+                echo "       For self-mapping this normally means the modbam and the" >&2
+                echo "       assembly are from different isolates — check that the input" >&2
+                echo "       arrays are in the same order." >&2
+                exit 1
+            fi
+        fi
+
         minimap2 --version > VERSION
     >>>
 
     output {
         File    aligned_bam         = "~{sample_name}.aligned.bam"
         File    aligned_bam_index   = "~{sample_name}.aligned.bam.bai"
+        File    reference_fai       = "ref.fa.fai"
         File    flagstat            = "~{sample_name}_flagstat.txt"
         File    coverage_txt        = "~{sample_name}_coverage.txt"
         String  percent_mapped      = read_string("MAPPED_PCT")
