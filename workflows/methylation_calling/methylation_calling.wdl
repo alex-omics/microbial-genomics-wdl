@@ -6,6 +6,7 @@ import "../../tasks/bakta.wdl" as bakta_task
 import "../../tasks/annotate_methylation.wdl" as annotate_task
 import "../../tasks/panaroo.wdl" as panaroo_task
 import "../../tasks/methylation_orthologs.wdl" as ortholog_task
+import "../../tasks/utils.wdl" as utils
 
 workflow methylation_calling {
 
@@ -175,7 +176,7 @@ workflow methylation_calling {
         "modkit_version"
     ]
 
-    call name_summary {
+    call utils.name_summary {
         input:
             rows     = flatten([[summary_header], summary_row]),
             basename = summary_basename
@@ -187,10 +188,10 @@ workflow methylation_calling {
     # shared gene groups; coordinates cannot do that job across independent
     # assemblies.
     if (run_bakta) {
-        call merge_annotated {
+        call utils.concat_tables {
             input:
-                annotated_tables = select_all(annotate_methylation.annotated_tsv),
-                basename         = merged_basename
+                tables   = select_all(annotate_methylation.annotated_tsv),
+                basename = merged_basename
         }
     }
 
@@ -221,7 +222,7 @@ workflow methylation_calling {
 
     output {
         File  summary_tsv          = name_summary.summary
-        File? methylation_long     = merge_annotated.merged
+        File? methylation_long     = concat_tables.merged
 
         # The comparative deliverables: ortholog groups x isolates, with gene
         # absence held as NA rather than collapsed to zero.
@@ -245,69 +246,5 @@ workflow methylation_calling {
         Array[File?] bakta_faa           = bakta.faa
         Array[File?] bakta_tsv           = bakta.annotation_tsv
         Array[File?] annotated_tables    = annotate_methylation.annotated_tsv
-    }
-}
-
-# Same helper as assembly_qc.wdl: write_tsv alone emits a temp-named file that
-# lands in the bucket as something like "tmpzsaunsvb", so route it through a
-# task to give the deliverable a recognisable name. Duplicated rather than
-# imported because it is defined inside assembly_qc.wdl; worth lifting into a
-# shared tasks/utils.wdl if a third workflow needs it.
-task name_summary {
-    input {
-        Array[Array[String]] rows
-        String               basename
-    }
-
-    command <<<
-        set -euo pipefail
-        cp ~{write_tsv(rows)} "~{basename}.tsv"
-    >>>
-
-    output {
-        File summary = "~{basename}.tsv"
-    }
-
-    runtime {
-        docker:         "ubuntu:22.04"
-        memory:         "2 GB"
-        cpu:            1
-        disks:          "local-disk 10 SSD"
-        preemptible:    1
-        maxRetries:     2
-    }
-}
-
-task merge_annotated {
-    input {
-        Array[File] annotated_tables
-        String      basename
-    }
-
-    command <<<
-        set -euo pipefail
-
-        head -n1 ~{annotated_tables[0]} > "~{basename}.tsv"
-        for f in ~{sep=' ' annotated_tables}; do
-            awk 'NR>1' "${f}" >> "~{basename}.tsv"
-        done
-
-        gzip -c "~{basename}.tsv" > "~{basename}.tsv.gz"
-        awk 'NR>1' "~{basename}.tsv" | wc -l > N_ROWS
-    >>>
-
-    output {
-        File merged     = "~{basename}.tsv"
-        File merged_gz  = "~{basename}.tsv.gz"
-        Int  n_rows     = read_int("N_ROWS")
-    }
-
-    runtime {
-        docker:         "ubuntu:22.04"
-        memory:         "8 GB"
-        cpu:            1
-        disks:          "local-disk 50 SSD"
-        preemptible:    1
-        maxRetries:     2
     }
 }
