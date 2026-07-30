@@ -4,6 +4,8 @@ import "../../tasks/align_modbam.wdl" as align_task
 import "../../tasks/modkit.wdl" as modkit_task
 import "../../tasks/bakta.wdl" as bakta_task
 import "../../tasks/annotate_methylation.wdl" as annotate_task
+import "../../tasks/panaroo.wdl" as panaroo_task
+import "../../tasks/methylation_orthologs.wdl" as ortholog_task
 
 workflow methylation_calling {
 
@@ -26,6 +28,10 @@ workflow methylation_calling {
 
         Boolean         run_bakta         = true
         Boolean         run_find_motifs   = true
+        Boolean         run_pangenome     = true
+
+        String          panaroo_clean_mode = "strict"
+        Float           core_threshold     = 0.95
 
         # modkit
         Boolean         no_filtering      = false
@@ -57,6 +63,9 @@ workflow methylation_calling {
         bakta_db:           "Optional .tar.gz of the full Bakta database. Omitted, the light database baked into the staphb image is used."
         run_bakta:          "Annotate each assembly with Bakta. Turn off only if supplying annotations another way (default = true)"
         run_find_motifs:    "Per-isolate de novo motif discovery. The motif inventory is a primary characterisation axis here, effectively reporting which restriction-modification systems each isolate carries (default = true)"
+        run_pangenome:      "Build a pangenome across the panel and collapse methylation onto ortholog groups. This is what makes independently-assembled isolates comparable; without it the outputs are a per-isolate catalogue only (default = true)"
+        panaroo_clean_mode: "Panaroo error-correction mode: strict, moderate, or sensitive. Complete ONT assemblies justify 'strict' (default = strict)"
+        core_threshold:     "Fraction of isolates a gene must appear in to be called core (default = 0.95)"
         min_coverage:       "Minimum Nvalid_cov for a site to be counted or annotated (default = 10)"
         min_percent:        "Minimum percent-modified for a site to count as methylated in summary stats (default = 50.0)"
         min_mapped_percent: "Mapping-rate floor, as a guard against mismatched modbam/assembly pairs (default = 85.0)"
@@ -178,9 +187,37 @@ workflow methylation_calling {
         }
     }
 
+    # Orthology is the cross-isolate join key. Coordinates cannot serve that
+    # role once every isolate has been assembled and annotated independently,
+    # so the pangenome is what turns a stack of per-isolate catalogues into a
+    # gene-by-isolate matrix.
+    if (run_bakta && run_pangenome) {
+        call panaroo_task.panaroo {
+            input:
+                gff3s          = select_all(bakta.gff3),
+                fnas           = select_all(bakta.fna),
+                clean_mode     = panaroo_clean_mode,
+                core_threshold = core_threshold
+        }
+
+        call ortholog_task.methylation_orthologs {
+            input:
+                gene_presence_absence = panaroo.gene_presence_absence,
+                annotated_tables      = select_all(annotate_methylation.annotated_tsv),
+                sample_names          = resolved_name
+        }
+    }
+
     output {
         File  summary_tsv          = name_summary.summary
         File? methylation_long     = merge_annotated.merged
+
+        # The comparative deliverables: ortholog groups x isolates, with gene
+        # absence held as NA rather than collapsed to zero.
+        File? ortholog_matrix      = methylation_orthologs.matrix
+        File? ortholog_long        = methylation_orthologs.long_table
+        File? pangenome_presence   = panaroo.gene_presence_absence
+        File? pangenome_summary    = panaroo.summary_statistics
 
         Array[File] aligned_bams         = align_modbam.aligned_bam
         Array[File] aligned_bam_indexes  = align_modbam.aligned_bam_index
