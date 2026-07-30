@@ -10,6 +10,7 @@ task annotate_methylation {
         Int      flank_upstream    = 300
         Boolean  trim_to_intergenic = true
         Int      min_coverage      = 10
+        Float    min_percent       = 50.0
         String   feature_type      = "CDS"
         Int      cpu               = 2
         Int      mem_gb            = 8
@@ -25,6 +26,7 @@ task annotate_methylation {
         flank_upstream:     "Bases upstream of each feature to treat as putative promoter/regulatory region (default = 300)"
         trim_to_intergenic: "Subtract annotated feature bodies from the upstream windows. Bacterial genomes are operonic and densely packed, so a fixed upstream window routinely lands inside the neighbouring gene (default = true)"
         min_coverage:       "Minimum Nvalid_cov for a site to be carried into the annotated table (default = 10)"
+        min_percent:        "Minimum percent-modified for a site to be carried into the annotated table. Both floors matter: modkit emits a row for EVERY evaluated A and C, so filtering on coverage alone keeps millions of unmethylated positions and turns any downstream site count into a proxy for gene length. The unfiltered pileup is still available as modkit_pileup's bedmethyl output if you want to re-threshold (default = 50.0)"
         feature_type:       "GFF feature type to annotate against (default = CDS)"
         cpu:                "Number of CPUs delegated to task (default = 2)"
         mem_gb:             "Amount of memory in GB delegated to task (default = 8)"
@@ -67,10 +69,16 @@ task annotate_methylation {
         fi
         echo "Parsed $(wc -l < features.bed) ~{feature_type} features"
 
-        # Coverage floor before annotating, so the table is not padded with
-        # positions that were never confidently observed.
-        awk -F'\t' -v mincov=~{min_coverage} 'BEGIN {OFS="\t"} $10>=mincov' ~{bedmethyl} \
+        # Both floors, applied before annotating. Column 10 is Nvalid_cov and
+        # column 11 is percent modified. Coverage alone is not enough: modkit
+        # emits a row for every evaluated A and C in the genome, so a
+        # coverage-only filter keeps millions of ~0% positions and any
+        # downstream count of "sites" degenerates into gene length.
+        awk -F'\t' -v mincov=~{min_coverage} -v minpct=~{min_percent} \
+            'BEGIN {OFS="\t"} $10>=mincov && $11>=minpct' ~{bedmethyl} \
             | sort -k1,1 -k2,2n > sites.bed
+
+        echo "Retained $(wc -l < sites.bed) methylated sites at >=~{min_coverage}x and >=~{min_percent}% modified"
 
         # Contig-name mismatch between the pileup and the annotation is the
         # classic silent failure: intersect returns zero rows and looks exactly
@@ -97,9 +105,12 @@ task annotate_methylation {
         # 7, so the feature fields land at 19-25 (22=locus_tag, 23=gene,
         # 24=strand, 25=product). Verified against bedtools 2.31.1 rather than
         # counted by eye.
+        # region_length ($21-$20) is carried so site counts can be normalised
+        # into a density. Without it a long gene looks more methylated than a
+        # short one purely by having more positions to be methylated at.
         bedtools intersect -a sites.bed -b features.bed -wa -wb \
             | awk -F'\t' 'BEGIN {OFS="\t"} {
-                print $1, $2, $3, $6, $4, $10, $11, $22, $23, $24, $25, "genic"
+                print $1, $2, $3, $6, $4, $10, $11, $22, $23, $24, ($21-$20), $25, "genic"
               }' > genic.tsv || true
 
         # --- Sites in upstream / putative promoter regions --------------------
@@ -113,22 +124,22 @@ task annotate_methylation {
         if [ -s upstream.bed ]; then
             bedtools intersect -a sites.bed -b upstream.bed -wa -wb \
                 | awk -F'\t' 'BEGIN {OFS="\t"} {
-                    print $1, $2, $3, $6, $4, $10, $11, $22, $23, $24, $25, "upstream"
+                    print $1, $2, $3, $6, $4, $10, $11, $22, $23, $24, ($21-$20), $25, "upstream"
                   }' > upstream_sites.tsv || true
         else
             : > upstream_sites.tsv
         fi
 
         {
-            printf "sample\tchrom\tstart\tend\tsite_strand\tmod_code\tn_valid_cov\tpercent_modified\tlocus_tag\tgene\tfeature_strand\tproduct\tregion\n"
+            printf "sample\tchrom\tstart\tend\tsite_strand\tmod_code\tn_valid_cov\tpercent_modified\tlocus_tag\tgene\tfeature_strand\tregion_length\tproduct\tregion\n"
             cat genic.tsv upstream_sites.tsv \
                 | sort -k1,1 -k2,2n \
                 | awk -F'\t' -v s="~{sample_name}" 'BEGIN {OFS="\t"} {print s, $0}'
         } > ~{sample_name}_methylation_annotated.tsv
 
         awk 'NR>1' ~{sample_name}_methylation_annotated.tsv | wc -l > N_ANNOTATED
-        awk -F'\t' 'NR>1 && $13=="genic"    {n++} END {print n+0}' ~{sample_name}_methylation_annotated.tsv > N_GENIC
-        awk -F'\t' 'NR>1 && $13=="upstream" {n++} END {print n+0}' ~{sample_name}_methylation_annotated.tsv > N_UPSTREAM
+        awk -F'\t' 'NR>1 && $14=="genic"    {n++} END {print n+0}' ~{sample_name}_methylation_annotated.tsv > N_GENIC
+        awk -F'\t' 'NR>1 && $14=="upstream" {n++} END {print n+0}' ~{sample_name}_methylation_annotated.tsv > N_UPSTREAM
 
         # Distinct loci carrying at least one methylation call, which is the
         # count that actually maps onto a gene list for multi-omics joining.

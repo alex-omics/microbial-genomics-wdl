@@ -86,24 +86,36 @@ task methylation_orthologs {
         # Aggregate methylation per (group, sample).
         agg = defaultdict(lambda: {"genic": 0, "upstream": 0,
                                    "6mA": 0, "4mC": 0, "5mC": 0,
-                                   "pct_sum": 0.0, "n": 0, "tags": set()})
+                                   "pct_sum": 0.0, "n": 0, "tags": set(),
+                                   "genic_len": {}, "upstream_len": {}})
         CODE = {"a": "6mA", "21839": "4mC", "m": "5mC"}
         unmatched = 0
 
+        # Columns: 0 sample, 5 mod_code, 7 percent_modified, 8 locus_tag,
+        # 11 region_length, 13 region.
         for path in tables:
             with open(path, newline="", encoding="utf-8", errors="replace") as fh:
                 rd = csv.reader(fh, delimiter="\t")
                 next(rd, None)
                 for r in rd:
-                    if len(r) < 13:
+                    if len(r) < 14:
                         continue
-                    sample, mod_code, pct, tag, region = r[0], r[5], r[7], r[8], r[12]
+                    sample, mod_code, pct, tag = r[0], r[5], r[7], r[8]
+                    rlen, region = r[11], r[13]
                     group = tag2group.get((sample, tag))
                     if group is None:
                         unmatched += 1
                         continue
                     a = agg[(group, sample)]
-                    a[region if region in ("genic", "upstream") else "genic"] += 1
+                    region = region if region in ("genic", "upstream") else "genic"
+                    a[region] += 1
+                    # Length is a property of the region, not the site, so store
+                    # it per locus tag and sum distinct tags rather than adding
+                    # it once per methylated position.
+                    try:
+                        a[region + "_len"][tag] = int(rlen)
+                    except ValueError:
+                        pass
                     label = CODE.get(mod_code)
                     if label:
                         a[label] += 1
@@ -124,7 +136,9 @@ task methylation_orthologs {
             w.writerow(["ortholog_group", "gene_name", "annotation",
                         "n_isolates_with_gene", "sample", "locus_tags",
                         "n_genic_sites", "n_upstream_sites",
-                        "n_6mA", "n_4mC", "n_5mC", "mean_percent_modified"])
+                        "n_6mA", "n_4mC", "n_5mC", "mean_percent_modified",
+                        "genic_length", "upstream_length",
+                        "genic_sites_per_kb"])
             for g in groups:
                 gene, ann = meta[g]
                 for s in samples:
@@ -132,14 +146,21 @@ task methylation_orthologs {
                         continue
                     a = agg.get((g, s))
                     if a is None:
+                        # Gene is present but carried no site clearing the
+                        # thresholds. Length is unknown because only methylated
+                        # sites reach this table, but the density is 0 either way.
                         w.writerow([g, gene, ann, len(present[g]), s, "",
-                                    0, 0, 0, 0, 0, "NA"])
+                                    0, 0, 0, 0, 0, "NA", "NA", "NA", 0])
                     else:
                         mean = ("%.2f" % (a["pct_sum"] / a["n"])) if a["n"] else "NA"
+                        glen = sum(a["genic_len"].values())
+                        ulen = sum(a["upstream_len"].values())
+                        dens = ("%.3f" % (1000.0 * a["genic"] / glen)) if glen else "NA"
                         w.writerow([g, gene, ann, len(present[g]), s,
                                     ";".join(sorted(a["tags"])),
                                     a["genic"], a["upstream"],
-                                    a["6mA"], a["4mC"], a["5mC"], mean])
+                                    a["6mA"], a["4mC"], a["5mC"], mean,
+                                    glen or "NA", ulen or "NA", dens])
 
         # Wide matrix of total methylated sites per gene per isolate.
         #

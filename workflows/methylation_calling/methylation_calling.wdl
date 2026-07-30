@@ -136,6 +136,7 @@ workflow methylation_calling {
                     flank_upstream     = flank_upstream,
                     trim_to_intergenic = trim_to_intergenic,
                     min_coverage       = min_coverage,
+                    min_percent        = min_percent,
                     feature_type       = feature_type
             }
         }
