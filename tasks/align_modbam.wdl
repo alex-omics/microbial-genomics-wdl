@@ -11,7 +11,7 @@ task align_modbam {
         Int     cpu                 = 8
         Int     mem_gb              = 32
         Int     disk_gb             = 150
-        String  docker              = "nanozoo/minimap2:2.31--c2b4c91"
+        String  docker              = "nanozoo/minimap2:2.31--c2b4c91@sha256:0b4e1d2204aa10863ae7508f52992665161d14c557e6cfede03e5a0739cf5dc4"
     }
 
     parameter_meta {

@@ -45,6 +45,7 @@ workflow methylation_calling {
         Float?          filter_threshold
         Int             min_coverage      = 10
         Float           min_percent       = 50.0
+        Int             min_mod_reads     = 3
 
         # Self-mapping should comfortably exceed this; the floor exists to catch
         # modbams and assemblies passed in mismatched order.
@@ -74,17 +75,33 @@ workflow methylation_calling {
         panaroo_clean_mode: "Panaroo error-correction mode: strict, moderate, or sensitive. Complete ONT assemblies justify 'strict' (default = strict)"
         core_threshold:     "Fraction of isolates a gene must appear in to be called core (default = 0.95)"
         min_coverage:       "Minimum Nvalid_cov for a site to be counted or annotated (default = 10)"
-        min_percent:        "Minimum percent-modified for a site to count as methylated in summary stats (default = 50.0)"
+        min_percent:        "Minimum percent-modified for a site to count as methylated. The value is unsettled and worth tuning against the bacterial literature; re-thresholding re-runs only annotation and the ortholog join, not alignment, pileup, Bakta or Panaroo (default = 50.0)"
+        min_mod_reads:      "Minimum reads actually carrying the modification. Decouples the percent floor from depth, so min_percent can be lowered to catch partial methylation without admitting two-read calls (default = 3)"
         min_mapped_percent: "Mapping-rate floor, as a guard against mismatched modbam/assembly pairs (default = 85.0)"
         flank_upstream:     "Bases upstream of each CDS treated as putative promoter region (default = 300)"
         trim_to_intergenic: "Trim upstream windows that run into neighbouring genes (default = true)"
     }
 
+    # basename() evaluates against the path string without localising anything,
+    # so this scatter costs nothing and runs no tasks.
+    scatter (m in modbams) {
+        String derived_name = sub(basename(m), "\\.(bam|modbam)$", "")
+    }
+
+    # Gating the main scatter on this is the point: a mismatched panel or an
+    # unusable sample name otherwise surfaces only after alignment, Bakta and
+    # Panaroo have already been paid for.
+    call utils.validate_panel {
+        input:
+            derived_names    = derived_name,
+            n_primary        = length(modbams),
+            companion_counts = [length(assemblies)],
+            sample_names     = sample_names
+    }
+
     scatter (i in range(length(modbams))) {
 
-        String resolved_name = if defined(sample_names)
-            then select_first([sample_names])[i]
-            else sub(basename(modbams[i]), "\\.(bam|modbam)$", "")
+        String resolved_name = validate_panel.sample_ids[i]
 
         # Everything below is in this isolate's own coordinate space.
         call align_task.align_modbam {
@@ -138,6 +155,7 @@ workflow methylation_calling {
                     trim_to_intergenic = trim_to_intergenic,
                     min_coverage       = min_coverage,
                     min_percent        = min_percent,
+                    min_mod_reads      = min_mod_reads,
                     feature_type       = feature_type
             }
         }

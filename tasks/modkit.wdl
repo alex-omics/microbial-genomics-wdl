@@ -14,7 +14,7 @@ task modkit_pileup {
         Int      cpu             = 8
         Int      mem_gb          = 16
         Int      disk_gb         = 100
-        String   docker          = "quay.io/biocontainers/ont-modkit:0.6.4--h7f49ad2_0"
+        String   docker          = "quay.io/biocontainers/ont-modkit:0.6.4--h7f49ad2_0@sha256:003ed784097737910c19abbe71fa2dffc32f888d228e5b5b12c4ec2adb799e0f"
     }
 
     parameter_meta {
@@ -140,7 +140,7 @@ task modkit_find_motifs {
         Int      cpu     = 8
         Int      mem_gb  = 32
         Int      disk_gb = 100
-        String   docker  = "quay.io/biocontainers/ont-modkit:0.6.4--h7f49ad2_0"
+        String   docker  = "quay.io/biocontainers/ont-modkit:0.6.4--h7f49ad2_0@sha256:003ed784097737910c19abbe71fa2dffc32f888d228e5b5b12c4ec2adb799e0f"
     }
 
     parameter_meta {

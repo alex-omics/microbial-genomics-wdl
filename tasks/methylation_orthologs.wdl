@@ -10,7 +10,7 @@ task methylation_orthologs {
         Int          cpu         = 2
         Int          mem_gb      = 16
         Int          disk_gb     = 50
-        String       docker      = "python:3.11-slim"
+        String       docker      = "python:3.11-slim@sha256:db3ff2e1800a8581e2c48a27c3995339d47bdf046da21c7627accd3d51053a93"
     }
 
     parameter_meta {
@@ -192,10 +192,10 @@ task methylation_orthologs {
             fh.write(str(len({g for (g, _s) in agg})) + "\n")
         PY
 
-        # The heredoc above is indented for readability inside the WDL block;
-        # strip that indentation before handing the file to python.
-        sed -i 's/^        //' join.py
-
+        # No de-indenting here: WDL strips the command block's common leading
+        # whitespace before the shell ever sees it, so the heredoc lands with
+        # the python's relative indentation already correct. Stripping again
+        # would flatten the nested blocks.
         python3 join.py \
             ~{gene_presence_absence} \
             ~{basename} \

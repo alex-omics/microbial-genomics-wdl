@@ -11,12 +11,11 @@ task bakta {
         String   species              = "aeruginosa"
         String?  strain
         String?  locus_tag
-        Boolean  keep_contig_headers  = true
         Boolean  skip_plot            = true
         Int      cpu                  = 8
         Int      mem_gb               = 32
         Int      disk_gb              = 100
-        String   docker               = "staphb/bakta:1.12.0-6.0-light"
+        String   docker               = "staphb/bakta:1.12.0-6.0-light@sha256:9e6684870e21b5195addc5d17589d3a50aacb11441edba94b97f26bb464fff2d"
     }
 
     parameter_meta {
@@ -28,7 +27,6 @@ task bakta {
         species:             "Species name for the annotation (default = aeruginosa)"
         strain:              "Optional strain name; defaults to sample_name"
         locus_tag:           "Locus tag prefix. Defaults to a sanitised sample_name so every isolate gets deterministic, mutually distinguishable tags rather than Bakta's random prefix."
-        keep_contig_headers: "Preserve the assembly's original contig names. Essential here: Bakta otherwise renames contigs to contig_1, contig_2..., and the resulting GFF shares no sequence names with the BAM, so every downstream intersect silently returns nothing (default = true)"
         skip_plot:           "Skip circular genome plots, which are slow and not used downstream (default = true)"
         cpu:                 "Number of CPUs delegated to task (default = 8)"
         mem_gb:              "Amount of memory in GB delegated to task (default = 32)"
@@ -75,8 +73,12 @@ task bakta {
             *)    cp ~{assembly} input.fasta ;;
         esac
 
-        EXTRA_ARGS=()
-        ~{if keep_contig_headers then "EXTRA_ARGS+=(--keep-contig-headers)" else ""}
+        # --keep-contig-headers is NOT optional and is deliberately not exposed
+        # as an input. Without it Bakta renames contigs to contig_1, contig_2...,
+        # the GFF then shares no sequence names with the BAM, and every
+        # downstream intersect returns an empty table that looks exactly like
+        # "no methylation found" rather than an error.
+        EXTRA_ARGS=(--keep-contig-headers)
         ~{if skip_plot then "EXTRA_ARGS+=(--skip-plot)" else ""}
         ~{if defined(proteins) then "EXTRA_ARGS+=(--proteins " + proteins + ")" else ""}
         ~{if defined(strain) then "EXTRA_ARGS+=(--strain '" + strain + "')" else ""}

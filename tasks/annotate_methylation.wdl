@@ -11,22 +11,24 @@ task annotate_methylation {
         Boolean  trim_to_intergenic = true
         Int      min_coverage      = 10
         Float    min_percent       = 50.0
+        Int      min_mod_reads     = 3
         String   feature_type      = "CDS"
         Int      cpu               = 2
         Int      mem_gb            = 8
         Int      disk_gb           = 50
-        String   docker            = "staphb/bedtools:2.31.1"
+        String   docker            = "staphb/bedtools:2.31.1@sha256:52d4a9359d3adaa6ac8f8ebbdc5596bae791a738974e9a85f72892486a43336e"
     }
 
     parameter_meta {
         bedmethyl:          "bedMethyl from modkit_pileup, in the reference's coordinate space"
         sample_name:        "Some identifier for naming outputs"
-        reference_gff:      "Annotation for the reference. Prefer the reference's own curated GFF (for PAO1, the RefSeq/Pseudomonas Genome DB annotation carrying PA numbers) over a fresh Bakta run — the locus tags become the join key to transcriptomics and proteomics, and Bakta mints new ones that match nothing."
-        reference_fai:      "samtools faidx index of the reference, used to build the genome file bedtools flank requires"
+        reference_gff:      "Annotation of the SAME assembly the bedMethyl was called against — normally this isolate's own Bakta GFF3. Its locus tags are what the pangenome later maps onto shared ortholog groups."
+        reference_fai:      "samtools faidx index of that assembly, used to build the genome file bedtools flank requires"
         flank_upstream:     "Bases upstream of each feature to treat as putative promoter/regulatory region (default = 300)"
         trim_to_intergenic: "Subtract annotated feature bodies from the upstream windows. Bacterial genomes are operonic and densely packed, so a fixed upstream window routinely lands inside the neighbouring gene (default = true)"
         min_coverage:       "Minimum Nvalid_cov for a site to be carried into the annotated table (default = 10)"
-        min_percent:        "Minimum percent-modified for a site to be carried into the annotated table. Both floors matter: modkit emits a row for EVERY evaluated A and C, so filtering on coverage alone keeps millions of unmethylated positions and turns any downstream site count into a proxy for gene length. The unfiltered pileup is still available as modkit_pileup's bedmethyl output if you want to re-threshold (default = 50.0)"
+        min_percent:        "Minimum percent-modified for a site to be carried into the annotated table. Some percent floor is essential: modkit emits a row for EVERY evaluated A and C, so filtering on coverage alone keeps millions of unmethylated positions and turns any downstream site count into a proxy for gene length. The VALUE, though, is unsettled and worth tuning against the bacterial literature rather than trusting. 50 is a placeholder, and it is a conservative one: RM methylation typically sits near 100%, so partially-methylated sites are the interesting anomaly, and a 50% cut discards half of that range. Re-thresholding is cheap — it re-runs this task and the ortholog join, not alignment, pileup, Bakta or Panaroo (default = 50.0)"
+        min_mod_reads:      "Minimum number of reads actually carrying the modification (bedMethyl Nmod, column 12). This is what makes a low percent floor safe: percent and coverage interact, so at 10x a '20% methylated' site is two reads and indistinguishable from noise, while at 100x it is twenty and real. Requiring an absolute count alongside the fraction lets min_percent be lowered without the table filling up with thinly-supported calls (default = 3)"
         feature_type:       "GFF feature type to annotate against (default = CDS)"
         cpu:                "Number of CPUs delegated to task (default = 2)"
         mem_gb:             "Amount of memory in GB delegated to task (default = 8)"
@@ -69,16 +71,24 @@ task annotate_methylation {
         fi
         echo "Parsed $(wc -l < features.bed) ~{feature_type} features"
 
-        # Both floors, applied before annotating. Column 10 is Nvalid_cov and
-        # column 11 is percent modified. Coverage alone is not enough: modkit
-        # emits a row for every evaluated A and C in the genome, so a
-        # coverage-only filter keeps millions of ~0% positions and any
-        # downstream count of "sites" degenerates into gene length.
-        awk -F'\t' -v mincov=~{min_coverage} -v minpct=~{min_percent} \
-            'BEGIN {OFS="\t"} $10>=mincov && $11>=minpct' ~{bedmethyl} \
+        # Three floors, applied before annotating. bedMethyl column 10 is
+        # Nvalid_cov, 11 is percent modified, 12 is Nmod (reads carrying the
+        # modification).
+        #
+        # Coverage alone is not enough: modkit emits a row for every evaluated A
+        # and C in the genome, so a coverage-only filter keeps millions of ~0%
+        # positions and any downstream count of "sites" degenerates into gene
+        # length.
+        #
+        # Percent alone is not enough either, because percent and depth
+        # interact. Nmod is the absolute-support floor that decouples them, so
+        # min_percent can be lowered to chase partially-methylated sites without
+        # the table filling with two-read calls.
+        awk -F'\t' -v mincov=~{min_coverage} -v minpct=~{min_percent} -v minmod=~{min_mod_reads} \
+            'BEGIN {OFS="\t"} $10>=mincov && $11>=minpct && $12>=minmod' ~{bedmethyl} \
             | sort -k1,1 -k2,2n > sites.bed
 
-        echo "Retained $(wc -l < sites.bed) methylated sites at >=~{min_coverage}x and >=~{min_percent}% modified"
+        echo "Retained $(wc -l < sites.bed) sites at >=~{min_coverage}x, >=~{min_percent}% modified, >=~{min_mod_reads} modified reads"
 
         # Contig-name mismatch between the pileup and the annotation is the
         # classic silent failure: intersect returns zero rows and looks exactly

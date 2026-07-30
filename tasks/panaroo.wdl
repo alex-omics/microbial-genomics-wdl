@@ -18,7 +18,7 @@ task panaroo {
         Int          mem_gb               = 64
         Int          disk_gb              = 200
         Int          preemptible          = 0
-        String       docker               = "staphb/panaroo:1.7.0"
+        String       docker               = "staphb/panaroo:1.7.0@sha256:0e163bed1b5228bb0cc2bc07b406e9061f2fdaf3ce7b83a574fc0a49ad55ecf1"
     }
 
     parameter_meta {
