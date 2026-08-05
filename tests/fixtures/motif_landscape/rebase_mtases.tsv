@@ -1,0 +1,4 @@
+sample	locus_tag	rebase_enzyme	pident	evalue	bitscore	predicted_motif	modification_type
+iso1	ISO1_00010	M.EcoDam	98.5	1e-80	410	GATC	6mA
+iso1	ISO1_00020	M.EcoKI	60.1	1e-30	120	CCWGG	5mC
+iso1	ISO1_00030	M.Unknown	55.0	1e-26	95	NA	NA

@@ -105,6 +105,120 @@ DENS="$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++)h[$i]=i; next}
 check "density normalises by length" "2.000" "${DENS}"
 
 # --------------------------------------------------------------------------
+echo "rebase_blastp (real BLASTP + regression guard on the evalue bug)"
+# evalue is a String, not a Float, on purpose: WDL renders a Float this small
+# (1e-25) as the fixed-decimal text "0.000000", which blastp then rejects as
+# a non-positive e-value cutoff. This ran cleanly against a live default
+# before that fix was in place -- miniwdl check cannot catch it, since it is
+# a runtime string-interpolation behaviour, not a syntax error. Only a real
+# execution with the actual default value catches a regression here.
+REBASE_FIX="${REPO}/tests/fixtures/rebase"
+miniwdl run "${REPO}/tasks/rebase_mtase_search.wdl" --task rebase_blastp \
+    faa="${REBASE_FIX}/query.faa" \
+    sample_name=test \
+    rebase_goldset_fasta="${REBASE_FIX}/goldset.faa" \
+    --dir "${WORK}/blastp" --verbose > "${WORK}/blastp.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/blastp.log"; sed -n '$p' "${WORK}/blastp.log"; exit 1; }
+HITS="$(find "${WORK}/blastp" -path '*/out/*' -name '*_blast_hits.tsv' | head -1)"
+check "blastp finds the planted 100% identity hit" "ISO1_00010	M.AacDam" \
+    "$(cut -f1,2 "${HITS}")"
+
+# --------------------------------------------------------------------------
+echo "rebase_mtase_search (join logic)"
+# BLASTP hit with a characterised REBASE motif must carry it through; a hit
+# whose REBASE entry has no known recognition sequence (Motif="?") must be
+# kept as NA rather than silently dropped, since "homology confirmed, motif
+# unknown" is still real information about the isolate.
+MOTIF_FIX="${REPO}/tests/fixtures/motif_landscape"
+# rebase_blastp itself was already exercised above through real docker. This
+# section is join.py specifically -- extracted and run directly, the way the
+# ortholog join is tested, since the branching (characterised vs. unknown
+# motif) is the part actually worth a regression check.
+sed -n '/^        cat > join.py/,/^        PY$/p' "${REPO}/tasks/rebase_mtase_search.wdl" | sed '1d;$d' | sed 's/^        //' > "${WORK}/rebase_join.py"
+python3 "${WORK}/rebase_join.py" \
+    "${MOTIF_FIX}/blast_hits.tsv" "${MOTIF_FIX}/rebase_motif_data.tsv" iso1 "${WORK}/rebase_out.tsv"
+check "characterised motif carried through" "GATC" \
+    "$(awk -F'\t' '$2=="ISO1_00010"{print $7}' "${WORK}/rebase_out.tsv")"
+check "unknown-motif hit kept as NA, not dropped" "NA" \
+    "$(awk -F'\t' '$2=="ISO1_00099"{print $7}' "${WORK}/rebase_out.tsv")"
+
+# --------------------------------------------------------------------------
+echo "build_motif_list"
+miniwdl run "${REPO}/tasks/motif_landscape.wdl" --task build_motif_list \
+    find_motifs_tsv="${MOTIF_FIX}/find_motifs.tsv" \
+    rebase_mtases_tsv="${MOTIF_FIX}/rebase_mtases.tsv" \
+    --dir "${WORK}/bml" --verbose > "${WORK}/bml.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/bml.log"; exit 1; }
+LIST="$(find "${WORK}/bml" -path '*/out/*' -name 'motif_list.tsv' | head -1)"
+check "de novo and REBASE agreement dedupes to one row" "1" \
+    "$(awk -F'\t' 'NR>1 && $1=="GATC" && $2=="a"' "${LIST}" | wc -l | tr -d ' ')"
+check "REBASE-only motif also present" "1" \
+    "$(awk -F'\t' 'NR>1 && $1=="CCWGG" && $2=="m"' "${LIST}" | wc -l | tr -d ' ')"
+check "row count matches expected dedup" "2" "$(awk 'NR>1' "${LIST}" | wc -l | tr -d ' ')"
+
+# --------------------------------------------------------------------------
+echo "motif_landscape (tier 1 + tier 2, against ground-truth planted signal)"
+# iso1.bedmethyl.bed plants 6mA at every genomic GATC copy but makes a third
+# of those copies unmethylated (phase-variation-like); iso2 plants the same
+# motif uniformly high everywhere. Expected numbers were hand-verified
+# against the planted values before being fixed here as regression checks.
+miniwdl run "${REPO}/tasks/motif_landscape.wdl" --task motif_landscape \
+    bedmethyl="${MOTIF_FIX}/iso1.bedmethyl.bed" \
+    motif_list="${MOTIF_FIX}/motif_list.tsv" \
+    sample_name=iso1 \
+    reference_fasta="${MOTIF_FIX}/reference.fa" \
+    --dir "${WORK}/ml1" > "${WORK}/ml1.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/ml1.log"; exit 1; }
+ML1="$(find "${WORK}/ml1" -path '*/out/*' -name '*_motif_landscape.tsv' | head -1)"
+check "tier1: heterogeneous isolate enrichment" "65.25" "$(awk -F'\t' 'NR==2{print $6}' "${ML1}")"
+check "tier1: background rate near planted 3%"   "3.00"  "$(awk -F'\t' 'NR==2{print $7}' "${ML1}")"
+check "tier2: heterogeneous isolate CV is high"  "0.665" "$(awk -F'\t' 'NR==2{print $10}' "${ML1}")"
+check "tier2: recovers exact count of planted low copies" "153" "$(awk -F'\t' 'NR==2{print $12}' "${ML1}")"
+
+miniwdl run "${REPO}/tasks/motif_landscape.wdl" --task motif_landscape \
+    bedmethyl="${MOTIF_FIX}/iso2.bedmethyl.bed" \
+    motif_list="${MOTIF_FIX}/motif_list.tsv" \
+    sample_name=iso2 \
+    reference_fasta="${MOTIF_FIX}/reference.fa" \
+    --dir "${WORK}/ml2" > "${WORK}/ml2.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/ml2.log"; exit 1; }
+ML2="$(find "${WORK}/ml2" -path '*/out/*' -name '*_motif_landscape.tsv' | head -1)"
+check "tier1: uniform isolate enrichment"        "97.00" "$(awk -F'\t' 'NR==2{print $6}' "${ML2}")"
+check "tier2: uniform isolate CV near zero (housekeeping null)" "0.006" "$(awk -F'\t' 'NR==2{print $10}' "${ML2}")"
+check "tier2: uniform isolate has no low-methylation copies"    "0"     "$(awk -F'\t' 'NR==2{print $12}' "${ML2}")"
+
+# --------------------------------------------------------------------------
+echo "motif_landscape_summary (tier 3, run directly -- see note below)"
+# Run via the extracted script rather than through miniwdl/docker: chaining
+# one miniwdl run's file outputs into a second run's inputs hits a sandbox-
+# specific virtiofs mount restriction in this environment that does not
+# reflect anything about the task itself (confirmed by successfully running
+# motif_landscape standalone above, against plain fixture files, in the same
+# environment). The checked-in landscape fixtures are themselves the
+# validated output of the miniwdl run above, so this still exercises real,
+# previously-miniwdl-verified numbers through the actual summarise.py logic.
+sed -n '/^        cat > summarise.py/,/^        PY$/p' "${REPO}/tasks/motif_landscape_summary.wdl" | sed '1d;$d' | sed 's/^        //' > "${WORK}/summarise.py"
+python3 "${WORK}/summarise.py" \
+    "${MOTIF_FIX}/iso1_landscape.tsv,${MOTIF_FIX}/iso2_landscape.tsv" \
+    "${MOTIF_FIX}/ortholog_long.tsv" \
+    "mex,opr" \
+    "${WORK}/by_motif.tsv" "${WORK}/by_gene.tsv"
+check "motif-level cross-isolate mean" "81.12" "$(awk -F'\t' 'NR==2{print $5}' "${WORK}/by_motif.tsv")"
+check "motif-level cross-isolate CV"   "0.196" "$(awk -F'\t' 'NR==2{print $8}' "${WORK}/by_motif.tsv")"
+check "gene-level: highlighted gene flagged" "yes" \
+    "$(awk -F'\t' '$1=="group_A"{print $8}' "${WORK}/by_gene.tsv")"
+check "gene-level: non-AMR gene not flagged" "" \
+    "$(awk -F'\t' '$1=="group_B"{print $8}' "${WORK}/by_gene.tsv")"
+
+python3 "${WORK}/summarise.py" \
+    "${MOTIF_FIX}/iso1_landscape.tsv,${MOTIF_FIX}/iso2_landscape.tsv" \
+    "${MOTIF_FIX}/ortholog_long_conflict.tsv" \
+    "mex,opr" \
+    /dev/null "${WORK}/by_gene_conflict.tsv"
+check "highlighted gene sorts first even with lower CV" "group_A" \
+    "$(awk -F'\t' 'NR==2{print $1}' "${WORK}/by_gene_conflict.tsv")"
+
+# --------------------------------------------------------------------------
 echo
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

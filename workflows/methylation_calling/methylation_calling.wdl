@@ -6,6 +6,9 @@ import "../../tasks/bakta.wdl" as bakta_task
 import "../../tasks/annotate_methylation.wdl" as annotate_task
 import "../../tasks/panaroo.wdl" as panaroo_task
 import "../../tasks/methylation_orthologs.wdl" as ortholog_task
+import "../../tasks/rebase_mtase_search.wdl" as rebase_task
+import "../../tasks/motif_landscape.wdl" as landscape_task
+import "../../tasks/motif_landscape_summary.wdl" as landscape_summary_task
 import "../../tasks/utils.wdl" as utils
 
 workflow methylation_calling {
@@ -30,6 +33,23 @@ workflow methylation_calling {
         Boolean         run_bakta         = true
         Boolean         run_find_motifs   = true
         Boolean         run_pangenome     = true
+
+        # REBASE homology identification. Both files must be supplied to run
+        # it -- stage them as GCS inputs rather than baking into an image or
+        # committing to the repo (MPore is GPL-3.0, and REBASE carries its
+        # own terms; a runtime input sidesteps redistribution questions).
+        File?           rebase_goldset_fasta
+        File?           rebase_motif_tsv
+        String          rebase_evalue      = "1e-25"
+
+        # Tier 1/2/3 landscape characterisation (see motif_landscape.wdl and
+        # motif_landscape_summary.wdl). Runs off find-motifs and/or REBASE
+        # output, whichever is available; needs neither MICs nor phenotype
+        # groups, since it is descriptive across the panel, not a case/control
+        # test.
+        Boolean         run_motif_landscape       = true
+        Float           heterogeneous_low_cutoff  = 50.0
+        Array[String]?  highlight_genes
 
         # Reuse a pangenome already built by workflows/pangenome rather than
         # recomputing it here. Its isolate column names must match this run's
@@ -80,6 +100,12 @@ workflow methylation_calling {
         min_mapped_percent: "Mapping-rate floor, as a guard against mismatched modbam/assembly pairs (default = 85.0)"
         flank_upstream:     "Bases upstream of each CDS treated as putative promoter region (default = 300)"
         trim_to_intergenic: "Trim upstream windows that run into neighbouring genes (default = true)"
+        rebase_goldset_fasta:      "REBASE Gold Standard protein set for MTase homology identification. Both this and rebase_motif_tsv must be supplied to run it; omitting either skips REBASE cleanly rather than failing."
+        rebase_motif_tsv:          "REBASE enzyme -> recognition motif -> modification type table, keyed on rebase_goldset_fasta's headers"
+        rebase_evalue:             "BLASTP e-value cutoff for a REBASE homology call, as a String -- a Float this small renders as the literal text 0.000000 in WDL's interpolation, which blastp rejects (default = \"1e-25\")"
+        run_motif_landscape:       "Test find-motifs' and REBASE's candidate motifs against this isolate's own data (enrichment + within-genome heterogeneity), then summarise variability across the panel by motif and by gene. Purely descriptive -- no phenotype groups or MICs required (default = true)"
+        heterogeneous_low_cutoff:  "Below this percent-modified, a motif occurrence counts as 'low' in the heterogeneity summary -- meaningful relative to the panel's typical housekeeping level, usually near 100 (default = 50.0)"
+        highlight_genes:           "Case-insensitive substrings (e.g. ['mex','opr','amp','nal']) to flag in the gene-level tier-3 table. A sort/flag convenience, not a filter -- every gene is still reported."
     }
 
     # basename() evaluates against the path string without localising anything,
@@ -157,6 +183,45 @@ workflow methylation_calling {
                     min_percent        = min_percent,
                     min_mod_reads      = min_mod_reads,
                     feature_type       = feature_type
+            }
+
+            if (defined(rebase_goldset_fasta) && defined(rebase_motif_tsv)) {
+                call rebase_task.rebase_blastp {
+                    input:
+                        faa                   = bakta.faa,
+                        sample_name           = resolved_name,
+                        rebase_goldset_fasta  = select_first([rebase_goldset_fasta]),
+                        evalue                = rebase_evalue
+                }
+
+                call rebase_task.rebase_join_motifs {
+                    input:
+                        blast_hits       = rebase_blastp.blast_hits,
+                        sample_name      = resolved_name,
+                        rebase_motif_tsv = select_first([rebase_motif_tsv])
+                }
+            }
+        }
+
+        if (run_motif_landscape) {
+            # Neither input is required -- an isolate with find-motifs off and
+            # no REBASE hits just tests zero motifs rather than failing, which
+            # keeps this composable with every other toggle in the workflow.
+            call landscape_task.build_motif_list {
+                input:
+                    find_motifs_tsv   = modkit_find_motifs.motifs_tsv,
+                    rebase_mtases_tsv = rebase_join_motifs.rebase_mtases,
+                    basename          = "~{resolved_name}_motif_list"
+            }
+
+            call landscape_task.motif_landscape {
+                input:
+                    bedmethyl                = modkit_pileup.bedmethyl,
+                    motif_list               = build_motif_list.motif_list,
+                    sample_name              = resolved_name,
+                    reference_fasta          = assemblies[i],
+                    min_coverage             = min_coverage,
+                    heterogeneous_low_cutoff = heterogeneous_low_cutoff
             }
         }
 
@@ -238,6 +303,19 @@ workflow methylation_calling {
         }
     }
 
+    # Tier 3: cross-isolate variability, both by motif (needs nothing but the
+    # per-isolate landscape tables) and by gene (reuses the ortholog long
+    # table above -- if pangenome/ortholog work did not run, the gene-level
+    # half is simply omitted, since the motif-level half does not depend on it).
+    if (run_motif_landscape) {
+        call landscape_summary_task.motif_landscape_summary {
+            input:
+                per_isolate_landscape = select_all(motif_landscape.landscape_tsv),
+                ortholog_long_table   = methylation_orthologs.long_table,
+                highlight_genes       = highlight_genes
+        }
+    }
+
     output {
         File  summary_tsv          = name_summary.summary
         File? methylation_long     = concat_tables.merged
@@ -248,6 +326,13 @@ workflow methylation_calling {
         File? ortholog_long        = methylation_orthologs.long_table
         File? pangenome_presence   = panaroo.gene_presence_absence
         File? pangenome_summary    = panaroo.summary_statistics
+
+        # Tier 1/2/3 landscape characterisation.
+        Array[File?] rebase_mtases       = rebase_join_motifs.rebase_mtases
+        Array[File?] motif_lists         = build_motif_list.motif_list
+        Array[File?] motif_landscapes    = motif_landscape.landscape_tsv
+        File?        motif_summary       = motif_landscape_summary.motif_summary
+        File?        gene_landscape_summary = motif_landscape_summary.gene_summary
 
         Array[File] aligned_bams         = align_modbam.aligned_bam
         Array[File] aligned_bam_indexes  = align_modbam.aligned_bam_index

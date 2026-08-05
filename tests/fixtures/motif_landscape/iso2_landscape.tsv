@@ -1,0 +1,2 @@
+sample	motif	mod_code	n_genomic_occurrences	n_sites_tested	in_motif_mean_pct	background_mean_pct	log2_enrichment	chi2_pvalue	occurrence_cv	n_occurrences_scored	n_occurrences_low
+iso2	GATC	a	458	458	97.00	2.99	4.971	0.000e+00	0.006	458	0

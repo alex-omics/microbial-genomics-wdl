@@ -1,0 +1,5 @@
+ortholog_group	gene_name	annotation	n_isolates_with_gene	sample	locus_tags	n_genic_sites	n_upstream_sites	n_6mA	n_4mC	n_5mC	mean_percent_modified	genic_length	upstream_length	genic_sites_per_kb
+group_A	mexA	efflux pump RND family	2	iso1	A_00001	4	0	4	0	0	91.00	1000	NA	4.000
+group_A	mexA	efflux pump RND family	2	iso2	B_00001	4	0	4	0	0	90.00	1000	NA	4.000
+group_C	nonAMRgene	random hypothetical protein	2	iso1	A_00003	9	0	9	0	0	99.00	1000	NA	9.000
+group_C	nonAMRgene	random hypothetical protein	2	iso2	B_00003	1	0	1	0	0	98.00	1000	NA	1.000
