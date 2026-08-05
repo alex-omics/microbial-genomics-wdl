@@ -1,0 +1,26 @@
+{
+  "__comment": "PLACEHOLDER. This file exists so Dockstore's testParameterFiles has something to point at — it is not a ready-to-run test. There is no small, public ONT modBAM + assembly fixture checked into this repo (real files are large and this pipeline has not run on real data yet). Fill in real gs:// paths for a Terra run, or configure inputs directly in the Terra console — the workflow's own input list is enough to do that without this file.",
+
+  "dna_methylation_calling.modbams": [
+    "gs://TODO-fill-in/isolate1.modbam.bam",
+    "gs://TODO-fill-in/isolate2.modbam.bam"
+  ],
+  "dna_methylation_calling.assemblies": [
+    "gs://TODO-fill-in/isolate1.assembly.fasta",
+    "gs://TODO-fill-in/isolate2.assembly.fasta"
+  ],
+  "dna_methylation_calling.sample_names": [
+    "isolate1",
+    "isolate2"
+  ],
+
+  "__comment_rebase": "Both required together to run REBASE MTase identification; omit both to skip it. Stage from DiltheyLab/MPore's repo (REBASE_protein_goldset.fasta, TSV_REBASE_data.tsv) or NEB directly — not vendored in this repo.",
+  "dna_methylation_calling.rebase_goldset_fasta": "gs://TODO-fill-in/REBASE_protein_goldset.fasta",
+  "dna_methylation_calling.rebase_motif_tsv": "gs://TODO-fill-in/TSV_REBASE_data.tsv",
+
+  "__comment_first_run": "This pipeline has never run on real data. Recommended first pass: one isolate, run_pangenome=false, run_motif_landscape=false — the core align/pileup/Bakta/annotate chain only, before layering the rest back in.",
+  "dna_methylation_calling.run_bakta": true,
+  "dna_methylation_calling.run_find_motifs": true,
+  "dna_methylation_calling.run_pangenome": true,
+  "dna_methylation_calling.run_motif_landscape": true
+}

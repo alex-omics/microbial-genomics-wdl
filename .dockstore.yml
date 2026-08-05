@@ -42,3 +42,31 @@ workflows:
       branches:
         - main
         - feature/multimodal-gwas
+
+  - name: dna_methylation_calling
+    subclass: WDL
+    primaryDescriptorPath: /workflows/dna_methylation_calling/dna_methylation_calling.wdl
+    readMePath: /workflows/dna_methylation_calling/README.md
+    testParameterFiles:
+      - /tests/dna_methylation_calling_inputs.json
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/methylation-calling
+
+  - name: pangenome
+    subclass: WDL
+    primaryDescriptorPath: /workflows/pangenome/pangenome.wdl
+    readMePath: /workflows/pangenome/README.md
+    testParameterFiles:
+      - /tests/pangenome_inputs.json
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/methylation-calling

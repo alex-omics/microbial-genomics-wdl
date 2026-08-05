@@ -11,7 +11,7 @@ import "../../tasks/motif_landscape.wdl" as landscape_task
 import "../../tasks/motif_landscape_summary.wdl" as landscape_summary_task
 import "../../tasks/utils.wdl" as utils
 
-workflow methylation_calling {
+workflow dna_methylation_calling {
 
     meta {
         description: "Per-isolate bacterial methylation calling from ONT modified-basecalled BAMs. Each isolate's reads are mapped to its OWN assembly, pileup'd with modkit, scanned for methylated motifs, and joined to a Bakta annotation of that same assembly. Self-mapping is deliberate: for an organism with substantial accessory genome and frequent rearrangement, no single reference is adequate, and motif discovery against a foreign reference reads sequence context that the isolate does not actually have."
