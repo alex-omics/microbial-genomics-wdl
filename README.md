@@ -9,6 +9,7 @@ WDL workflows for studying the genomes of bacterial and other microbial pathogen
 | fetch_sra_reads | Pulls fastq.gz files from Sequence Read Archive into Terra | 🚧 In development |
 | multimodal_gwas | Use multiple statistical approaches to correlate genes or variants to phenotypes | 🚧 In development |
 | polish_assembly | Uses short reads to improve a long-read assembly | 🚧 In development |
+| pyseer_gwas | Standalone pyseer LMM/LRT association over a gene or pangenome-module Rtab, with lineage effects and deliberate covariate-combination scanning | 🚧 In development |
 | rna_seq_counts | Align trimmed reads using a specified aligner to a reference, and count read pileup | 🔜 Planned |
 
 ## Repository Structure

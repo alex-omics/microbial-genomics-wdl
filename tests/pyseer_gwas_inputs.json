@@ -1,0 +1,18 @@
+{
+  "__comment": "LOCAL smoke-test inputs, for miniwdl/Cromwell on your own machine. Sequence/GWAS input files are not committed (gitignored, and specific to whatever panel you are analysing) — point these at your own phylogeny, Rtab, and phenotype file before running.",
+
+  "pyseer_gwas.phylogeny_newick": "tests/test_data/core_genome.nwk",
+  "pyseer_gwas.presence_absence_rtab": "tests/test_data/gene_presence_absence.Rtab",
+  "pyseer_gwas.phenotype_tsv": "tests/test_data/phenotype.tsv",
+
+  "__comment_covariates": "covariates_file: sample_id plus one named column per covariate (e.g. RST, OspC, MLST, BAPS). covariate_combinations runs one pyseer call per entry - a bare name is a single-covariate run, '+' joins several into one joint run (e.g. 'RST+OspC'). Deliberately NOT all four at once here: RST/OspC/MLST/BAPS are categorical typing labels (never add a 'q' suffix to them, even though some are stored as integers), and MLST's high cardinality relative to a typical isolate panel makes an all-four joint run a real degrees-of-freedom risk, not just a style choice - see the pyseer_gwas README for a measured example.",
+  "pyseer_gwas.covariates_file": "tests/test_data/covariates.tsv",
+  "pyseer_gwas.covariate_combinations": ["RST", "OspC", "MLST", "BAPS", "RST+OspC+BAPS"],
+
+  "__comment_lineage": "lineage_clusters is optional; a BAPS export (sample_id\\tBAPS) makes a ready-made --lineage-clusters file.",
+  "pyseer_gwas.run_lineage_effects": true,
+  "pyseer_gwas.lineage_clusters": "tests/test_data/baps_clusters.tsv",
+
+  "__comment_annotation": "annotation_table is optional; Panaroo's gene_presence_absence.csv (not the .Rtab) or an equivalent module-annotation table.",
+  "pyseer_gwas.annotation_table": "tests/test_data/gene_presence_absence.csv"
+}

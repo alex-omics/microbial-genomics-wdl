@@ -1,0 +1,9 @@
+samples	RST	OspC	MLST	BAPS
+sample1	RST1	A	ST1	1
+sample2	RST1	A	ST1	1
+sample3	RST2	B	ST2	2
+sample4	RST2	B	ST2	2
+sample5	RST1	A	ST3	1
+sample6	RST2	B	ST3	2
+sample7	RST1	A	ST4	1
+sample8	RST2	B	ST4	2
