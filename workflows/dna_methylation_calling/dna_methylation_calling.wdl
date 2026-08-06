@@ -30,6 +30,16 @@ workflow dna_methylation_calling {
         File?           proteins
         File?           bakta_db
 
+        # Reuse annotations already produced elsewhere (e.g. TheiaProk ONT's
+        # own Bakta step) instead of re-running Bakta here. All three must be
+        # supplied together, positionally matched to modbams/assemblies; if
+        # any is omitted, Bakta runs fresh as usual. Re-running Bakta with a
+        # full external database is the single most expensive, slowest stage
+        # in this workflow -- skip it whenever the outputs already exist.
+        Array[File]?    bakta_gff3s
+        Array[File]?    bakta_faas
+        Array[File]?    bakta_fnas
+
         Boolean         run_bakta         = true
         Boolean         run_find_motifs   = true
         Boolean         run_pangenome     = true
@@ -95,7 +105,10 @@ workflow dna_methylation_calling {
         assemblies:         "Each isolate's own assembly, positionally matched to modbams. Produced upstream (TheiaProk ONT, Autocycler, etc.) — this workflow does not assemble."
         sample_names:       "Optional labels, positionally matched to modbams. If omitted, names are derived from each filename."
         proteins:           "FASTA of trusted proteins for Bakta --proteins, e.g. the PAO1 proteome"
-        bakta_db:           "Optional .tar.gz of the full Bakta database. Omitted, the light database baked into the staphb image is used."
+        bakta_db:           "Optional .tar.gz of the full Bakta database. Omitted, the light database baked into the staphb image is used. Ignored entirely when bakta_gff3s/bakta_faas/bakta_fnas are supplied, since Bakta never runs in that case."
+        bakta_gff3s:        "Pre-computed Bakta GFF3s, positionally matched to modbams/assemblies, to skip re-running Bakta. Must be supplied together with bakta_faas and bakta_fnas."
+        bakta_faas:         "Pre-computed Bakta protein FASTAs, positionally matched to modbams/assemblies. Must be supplied together with bakta_gff3s and bakta_fnas."
+        bakta_fnas:         "Pre-computed Bakta nucleotide FASTAs (as Bakta itself emits them, e.g. with --keep-contig-headers), positionally matched to modbams/assemblies. Must be supplied together with bakta_gff3s and bakta_faas."
         run_bakta:          "Annotate each assembly with Bakta. Turn off only if supplying annotations another way (default = true)"
         run_find_motifs:    "Per-isolate de novo motif discovery. The motif inventory is a primary characterisation axis here, effectively reporting which restriction-modification systems each isolate carries (default = true)"
         run_pangenome:      "Build a pangenome across the panel and collapse methylation onto ortholog groups. This is what makes independently-assembled isolates comparable; without it the outputs are a per-isolate catalogue only (default = true)"
@@ -168,23 +181,37 @@ workflow dna_methylation_calling {
             }
         }
 
+        Boolean bakta_precomputed = defined(bakta_gff3s) && defined(bakta_faas) && defined(bakta_fnas)
+
         if (run_bakta) {
-            call bakta_task.bakta {
-                input:
-                    assembly    = assemblies[i],
-                    sample_name = resolved_name,
-                    bakta_db    = bakta_db,
-                    proteins    = proteins,
-                    genus       = genus,
-                    species     = species,
-                    strain      = resolved_name
+            if (!bakta_precomputed) {
+                call bakta_task.bakta {
+                    input:
+                        assembly    = assemblies[i],
+                        sample_name = resolved_name,
+                        bakta_db    = bakta_db,
+                        proteins    = proteins,
+                        genus       = genus,
+                        species     = species,
+                        strain      = resolved_name
+                }
             }
+
+            # Whichever branch ran, this isolate's annotation is now available
+            # under one name -- everything below is agnostic to where it came
+            # from.
+            File resolved_gff3 = if bakta_precomputed
+                then select_first([bakta_gff3s])[i] else select_first([bakta.gff3])
+            File resolved_faa = if bakta_precomputed
+                then select_first([bakta_faas])[i] else select_first([bakta.faa])
+            File resolved_fna = if bakta_precomputed
+                then select_first([bakta_fnas])[i] else select_first([bakta.fna])
 
             call annotate_task.annotate_methylation {
                 input:
                     bedmethyl          = modkit_pileup.bedmethyl,
                     sample_name        = resolved_name,
-                    reference_gff      = bakta.gff3,
+                    reference_gff      = resolved_gff3,
                     reference_fai      = align_modbam.reference_fai,
                     flank_upstream     = flank_upstream,
                     trim_to_intergenic = trim_to_intergenic,
@@ -197,7 +224,7 @@ workflow dna_methylation_calling {
             if (defined(rebase_goldset_fasta) && defined(rebase_motif_tsv)) {
                 call rebase_task.rebase_blastp {
                     input:
-                        faa                   = bakta.faa,
+                        faa                   = resolved_faa,
                         sample_name           = resolved_name,
                         rebase_goldset_fasta  = select_first([rebase_goldset_fasta]),
                         evalue                = rebase_evalue
@@ -296,8 +323,8 @@ workflow dna_methylation_calling {
     if (run_bakta && run_pangenome && !defined(gene_presence_absence)) {
         call panaroo_task.panaroo {
             input:
-                gff3s          = select_all(bakta.gff3),
-                fnas           = select_all(bakta.fna),
+                gff3s          = select_all(resolved_gff3),
+                fnas           = select_all(resolved_fna),
                 clean_mode     = panaroo_clean_mode,
                 core_threshold = core_threshold,
                 merge_paralogs = merge_paralogs
@@ -356,8 +383,10 @@ workflow dna_methylation_calling {
         Array[File] bed_5mc              = modkit_pileup.bed_5mc
 
         Array[File?] motif_tables        = modkit_find_motifs.motifs_tsv
-        Array[File?] bakta_gff3          = bakta.gff3
-        Array[File?] bakta_faa           = bakta.faa
+        # Populated regardless of whether Bakta ran here or annotations were
+        # supplied pre-computed -- always the isolate's actual annotation.
+        Array[File?] bakta_gff3          = resolved_gff3
+        Array[File?] bakta_faa           = resolved_faa
         Array[File?] bakta_tsv           = bakta.annotation_tsv
         Array[File?] annotated_tables    = annotate_methylation.annotated_tsv
     }
