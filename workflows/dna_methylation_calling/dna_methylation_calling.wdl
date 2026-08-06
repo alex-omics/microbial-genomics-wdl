@@ -67,6 +67,13 @@ workflow dna_methylation_calling {
         Float           min_percent       = 50.0
         Int             min_mod_reads     = 3
 
+        # Reads shorter than this are dropped before alignment, not after --
+        # a raw modBAM commonly carries a tail of short fragments mechanically
+        # incapable of a confident placement, and leaving them in makes
+        # percent_mapped measure read-length composition as much as it
+        # measures whether the modbam and assembly actually correspond.
+        Int             min_read_length    = 500
+
         # Self-mapping should comfortably exceed this; the floor exists to catch
         # modbams and assemblies passed in mismatched order.
         Float           min_mapped_percent = 85.0
@@ -97,7 +104,8 @@ workflow dna_methylation_calling {
         min_coverage:       "Minimum Nvalid_cov for a site to be counted or annotated (default = 10)"
         min_percent:        "Minimum percent-modified for a site to count as methylated. The value is unsettled and worth tuning against the bacterial literature; re-thresholding re-runs only annotation and the ortholog join, not alignment, pileup, Bakta or Panaroo (default = 50.0)"
         min_mod_reads:      "Minimum reads actually carrying the modification. Decouples the percent floor from depth, so min_percent can be lowered to catch partial methylation without admitting two-read calls (default = 3)"
-        min_mapped_percent: "Mapping-rate floor, as a guard against mismatched modbam/assembly pairs (default = 85.0)"
+        min_read_length:    "Reads shorter than this are dropped before alignment. 500 clears the short-fragment noise (adapter remnants, truncated translocations) commonly present in a raw modBAM while staying below the ~1000bp floor long-read assemblers use for a different job (overlap detection) than this workflow's (methylation coverage, where a shorter-but-real read is still worth keeping) (default = 500)"
+        min_mapped_percent: "Mapping-rate floor, evaluated AFTER the length filter, as a guard against mismatched modbam/assembly pairs (default = 85.0)"
         flank_upstream:     "Bases upstream of each CDS treated as putative promoter region (default = 300)"
         trim_to_intergenic: "Trim upstream windows that run into neighbouring genes (default = true)"
         rebase_goldset_fasta:      "REBASE Gold Standard protein set for MTase homology identification. Both this and rebase_motif_tsv must be supplied to run it; omitting either skips REBASE cleanly rather than failing."
@@ -135,6 +143,7 @@ workflow dna_methylation_calling {
                 modbam             = modbams[i],
                 sample_name        = resolved_name,
                 reference_fasta    = assemblies[i],
+                min_read_length    = min_read_length,
                 min_mapped_percent = min_mapped_percent
         }
 
@@ -227,6 +236,8 @@ workflow dna_methylation_calling {
 
         Array[String] summary_row = [
             resolved_name,
+            "~{align_modbam.n_reads_raw}",
+            "~{align_modbam.n_reads_length_filtered}",
             align_modbam.percent_mapped,
             align_modbam.mean_depth,
             "~{modkit_pileup.n_positions_covered}",
@@ -250,7 +261,7 @@ workflow dna_methylation_calling {
     }
 
     Array[String] summary_header = [
-        "sample", "percent_mapped", "mean_depth", "positions_covered",
+        "sample", "n_reads_raw", "n_reads_length_filtered", "percent_mapped", "mean_depth", "positions_covered",
         "n_sites_6mA", "n_sites_4mC", "n_sites_5mC",
         "mean_percent_6mA", "mean_percent_4mC", "mean_percent_5mC",
         "n_motifs", "motifs",

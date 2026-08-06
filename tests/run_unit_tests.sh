@@ -219,6 +219,32 @@ check "highlighted gene sorts first even with lower CV" "group_A" \
     "$(awk -F'\t' 'NR==2{print $1}' "${WORK}/by_gene_conflict.tsv")"
 
 # --------------------------------------------------------------------------
+echo "align_modbam length filter"
+# The filter that would have caught the false "different isolate" alarm this
+# session actually hit: a raw modBAM's short-fragment tail (~50-90bp junk,
+# empirically) is mechanically incapable of a confident minimap2 placement,
+# so leaving it in the denominator made percent_mapped measure read-length
+# composition, not whether the modbam and assembly correspond. Extracted
+# directly from the task rather than copied, so it can't drift from what
+# actually runs. Fixture covers the boundary: 499bp dropped, exactly 500bp
+# (the default) kept, plus a trivially short and a comfortably long read.
+ALIGN_FIX="${REPO}/tests/fixtures/align_modbam"
+sed -n '/^        awk -v minlen=~{min_read_length}/,/^        .*'"'"' reads.fastq/p' "${REPO}/tasks/align_modbam.wdl" \
+    | sed '1s/.*/awk -v minlen=500 \x27/; $s/.*/\x27/' > "${WORK}/lenfilter.sh"
+bash "${WORK}/lenfilter.sh" < "${ALIGN_FIX}/minireads.fastq" > "${WORK}/filtered.fastq"
+
+check "boundary: exactly-500bp read is kept" "1" \
+    "$(grep -c '^@exactly500$' "${WORK}/filtered.fastq")"
+check "boundary: 499bp read is dropped" "0" \
+    "$(grep -c '^@short2$' "${WORK}/filtered.fastq")"
+check "trivially short read is dropped" "0" \
+    "$(grep -c '^@short1$' "${WORK}/filtered.fastq")"
+check "long read is kept" "1" \
+    "$(grep -c '^@long1$' "${WORK}/filtered.fastq")"
+check "output FASTQ structure is not corrupted (2 records = 8 lines)" "8" \
+    "$(wc -l < "${WORK}/filtered.fastq" | tr -d ' ')"
+
+# --------------------------------------------------------------------------
 echo
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]

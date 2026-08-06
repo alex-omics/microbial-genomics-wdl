@@ -7,6 +7,7 @@ task align_modbam {
         String  sample_name
         File    reference_fasta
         String  minimap2_preset     = "map-ont"
+        Int     min_read_length     = 500
         Float   min_mapped_percent  = 0
         Int     cpu                 = 8
         Int     mem_gb              = 32
@@ -19,7 +20,8 @@ task align_modbam {
         sample_name:        "Some identifier for naming outputs"
         reference_fasta:    "Sequence to align against. The intended use is each isolate's OWN assembly: self-mapping keeps every modification call in the isolate's native coordinates and, critically, means motif discovery reads sequence context from the isolate's real sequence rather than a reference's."
         minimap2_preset:    "minimap2 -x preset (default = map-ont)"
-        min_mapped_percent: "Fail the task if fewer than this percent of primary reads map. Self-mapping should exceed 95%; a low rate almost always means the modbam and the assembly belong to different isolates. 0 disables the check (default = 0)"
+        min_read_length:    "Drop reads shorter than this many bp before alignment, not after. A raw modBAM commonly carries a tail of very short fragments (adapter remnants, truncated translocations) that are mechanically incapable of a confident minimap2 placement; left in, they inflate the read count without ever being mappable and deflate percent_mapped for reasons that have nothing to do with whether the modbam and assembly actually match. 500 sits well clear of that junk (empirically ~50-90bp) while staying below the ~1000bp floor long-read assemblers use — that threshold is tuned for assembly-graph overlap detection, a different job than this task's: every correctly-placed read here is a vote toward modkit's coverage floor, so a shorter-but-real read is still worth keeping (default = 500)"
+        min_mapped_percent: "Fail the task if fewer than this percent of primary reads (AFTER the length filter) map. Self-mapping should exceed 95%; a low rate almost always means the modbam and the assembly belong to different isolates. 0 disables the check (default = 0)"
         cpu:                "Number of CPUs delegated to task (default = 8)"
         mem_gb:             "Amount of memory in GB delegated to task (default = 32)"
         disk_gb:            "Amount of disk space in GB delegated to task (default = 150)"
@@ -69,8 +71,30 @@ task align_modbam {
         #   -y           minimap2 parks the tags in the FASTQ comment field;
         #                -y is what copies that comment back out as SAM tags.
         #                Without it the tags reach minimap2 and die there.
-        samtools fastq -@ ~{cpu} -T MM,ML,MN -F 0x900 ~{modbam} \
-            | minimap2 -y -ax ~{minimap2_preset} --MD -t ~{cpu} ref.fa - \
+        samtools fastq -@ ~{cpu} -T MM,ML,MN -F 0x900 ~{modbam} > reads.fastq
+        N_RAW=$(($(wc -l < reads.fastq) / 4))
+
+        # Length filter, applied here rather than left implicit in the mapping
+        # rate: a read too short to place confidently was never going to map
+        # regardless of whether the modbam and assembly correspond, so leaving
+        # it in the denominator makes percent_mapped measure read-length
+        # composition as much as it measures isolate/assembly agreement.
+        # samtools fastq has no native length filter, hence the awk pass.
+        awk -v minlen=~{min_read_length} '
+            NR%4==1 { h=$0 }
+            NR%4==2 { s=$0 }
+            NR%4==3 { p=$0 }
+            NR%4==0 { if (length(s) >= minlen) print h "\n" s "\n" p "\n" $0 }
+        ' reads.fastq > filtered.fastq
+        N_FILTERED=$(($(wc -l < filtered.fastq) / 4))
+
+        PCT_RETAINED=$(awk -v r="${N_RAW}" -v f="${N_FILTERED}" \
+            'BEGIN {if (r>0) printf "%.1f", 100*f/r; else print "NA"}')
+        echo "Length filter (>=~{min_read_length} bp): ${N_RAW} -> ${N_FILTERED} reads (${PCT_RETAINED}% retained)"
+        echo "${N_RAW}"      > N_READS_RAW
+        echo "${N_FILTERED}" > N_READS_FILTERED
+
+        minimap2 -y -ax ~{minimap2_preset} --MD -t ~{cpu} ref.fa filtered.fastq \
             | samtools sort -@ ~{cpu} -o ~{sample_name}.aligned.bam -
 
         samtools index -@ ~{cpu} ~{sample_name}.aligned.bam
@@ -124,6 +148,8 @@ task align_modbam {
         File    reference_fai       = "ref.fa.fai"
         File    flagstat            = "~{sample_name}_flagstat.txt"
         File    coverage_txt        = "~{sample_name}_coverage.txt"
+        Int     n_reads_raw         = read_int("N_READS_RAW")
+        Int     n_reads_length_filtered = read_int("N_READS_FILTERED")
         String  percent_mapped      = read_string("MAPPED_PCT")
         String  mean_depth          = read_string("MEAN_DEPTH")
         String  minimap2_version    = read_string("VERSION")
