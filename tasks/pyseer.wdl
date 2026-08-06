@@ -274,7 +274,13 @@ print(f'Significant hits (p < {threshold:.3e}): {len(sig)}')
             exit 1
         fi
         if [ "${#COV_COMBOS[@]}" -gt 0 ]; then
-            HEADER="$(head -1 ~{default="" covariates_file})"
+            # tr -d '\r': covariates_file may have Windows CRLF line endings
+            # (e.g. an Excel-exported TSV). `head`/`awk` only recognise \n as
+            # a line terminator, so the *last* header column would otherwise
+            # keep a trailing \r and never string-match its column name here
+            # - pyseer's own Python-side read of the same file is unaffected,
+            # since text-mode file reads normalise \r\n to \n automatically.
+            HEADER="$(head -1 ~{default="" covariates_file} | tr -d '\r')"
             for COMBO in "${COV_COMBOS[@]}"; do
                 IFS='+' read -ra MEMBERS <<< "${COMBO}"
                 IDXS=()
