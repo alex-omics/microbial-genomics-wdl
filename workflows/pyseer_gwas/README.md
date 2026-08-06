@@ -24,7 +24,7 @@ same pyseer version but use separate Docker images (`aarvani1/pyseer` vs.
 | ---- | ---- | ------ |
 | Kinship + distance matrix | `phylogeny_distance.py`, with and without `--lmm` | `kinship_matrix`, `distance_matrix` |
 | Association | `pyseer --lmm` | `gene_results`, `gene_significant` (pattern-counted Bonferroni via `count_patterns.py`) |
-| Lineage effects *(optional)* | `pyseer --lineage` | `lineage_effects` |
+| Lineage effects *(optional)* | `pyseer --lineage`, own minimal-input call | `lineage_effects` |
 | Covariate combination scan *(optional)* | `pyseer --use-covariates`, once per combination | `covariate_scan_results`, `covariate_scan_combined` |
 | SNP association *(optional)* | `pyseer --vcf` | `snp_results` |
 | Name/annotation join *(optional)* | pandas left join, never touches pyseer's own files | `gene_results_annotated`, `gene_results_readable` (+ the same pair for `gene_significant`) |
@@ -40,7 +40,7 @@ same pyseer version but use separate Docker images (`aarvani1/pyseer` vs.
 | `covariates_file` | `File?` | `sample_id` + one named column per covariate (e.g. RST, OspC, MLST, BAPS) |
 | `use_covariates` | `String?` | pyseer's raw `--use-covariates` value, applied jointly to the main association |
 | `covariate_combinations` | `Array[String]` | Groups of `covariates_file` column names to test together, one pyseer run per entry — see below |
-| `run_lineage_effects` | `Boolean` | Adds `--lineage` to the main association (default `false`). Needs a distance matrix, which the workflow derives from `phylogeny_newick` automatically — nothing extra to pass in. pyseer refuses `--lineage` without one even when `lineage_clusters` is set; this is not just the fallback for MDS-derived lineages |
+| `run_lineage_effects` | `Boolean` | Runs `pyseer_lineage_effects`, a separate task, not folded into the main association (default `false`). It runs `--lineage` against only a small slice of `presence_absence_rtab` — enough for pyseer to initialise, not the full variant set — because folding `--lineage` into the full `--lmm` call against real data (6,427 variants, 200 isolates) caused an unexplained OOM that killed a 32 GB machine in under a minute. Needs a distance matrix, which the workflow derives from `phylogeny_newick` automatically — nothing extra to pass in. pyseer refuses `--lineage` without one even when `lineage_clusters` is set; this is not just the fallback for MDS-derived lineages |
 | `lineage_clusters` | `File?` | `sample_id\tcluster_id`, e.g. a BAPS export, for `--lineage-clusters` |
 | `annotation_table` | `File?` | Panaroo/Roary `gene_presence_absence.csv`, or an equivalent module-annotation table |
 

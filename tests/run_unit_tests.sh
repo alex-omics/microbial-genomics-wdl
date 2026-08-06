@@ -137,7 +137,7 @@ miniwdl run "${REPO}/workflows/pyseer_gwas/pyseer_gwas.wdl" \
         echo "  workflow failed; see ${WORK}/smoke.log"; sed -n '$p' "${WORK}/smoke.log"; exit 1; }
 
 SMOKE_GENE_RESULTS="$(find "${WORK}/smoke" -path '*call-pyseer_association*' -name 'pyseer_gene_results.tsv' | head -1)"
-SMOKE_LINEAGE="$(find "${WORK}/smoke" -path '*call-pyseer_association*' -name 'lineage_effects.txt' | head -1)"
+SMOKE_LINEAGE="$(find "${WORK}/smoke" -path '*call-pyseer_lineage_effects*' -name 'lineage_effects.txt' | head -1)"
 SMOKE_READABLE="$(find "${WORK}/smoke" -path '*call-annotate_all*' -name 'pyseer_gene_results_readable.tsv' | head -1)"
 
 check "gene_results: invariant core gene filtered by max_af" \

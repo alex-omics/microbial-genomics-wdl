@@ -64,7 +64,7 @@ workflow pyseer_gwas {
         covariates_file:        "Tab-separated: sample_id, then one named column per covariate (e.g. RST, OspC, MLST, BAPS)"
         use_covariates:         "pyseer --use-covariates value, applied jointly across every covariates_file column named here"
         covariate_combinations: "Groups of covariates_file column names to test together, one group per pyseer run, each producing its own result file under covariate_scan_results. A bare name is a single-covariate run (e.g. 'BAPS'); '+' joins several into one run (e.g. 'RST+OspC+BAPS'). Deliberately not an all-combinations search - see README for why loading every column jointly is a real degrees-of-freedom risk, not just a style choice."
-        run_lineage_effects:    "Report per-lineage effects alongside the main association (default = false). The distance matrix pyseer's --lineage requires is derived automatically from phylogeny_newick - nothing extra to supply."
+        run_lineage_effects:    "Report per-lineage effects as a separate, minimal-input pyseer call, not folded into the main association (default = false). The distance matrix pyseer's --lineage requires is derived automatically from phylogeny_newick - nothing extra to supply."
         lineage_clusters:       "Two columns sample_id\\tcluster_id (e.g. BAPS) for --lineage-clusters. Omit to use pyseer's MDS-derived lineages."
         annotation_table:       "Panaroo/Roary gene_presence_absence.csv, or an equivalent module-annotation table, for the name/annotation join"
         association_mem_gb:     "pyseer association memory. 8 GB covers a Panaroo gene Rtab for a few dozen isolates; scale up for genus-level panels (default = 8)"
@@ -86,14 +86,27 @@ workflow pyseer_gwas {
             covariates_file        = covariates_file,
             use_covariates         = use_covariates,
             covariate_combinations = covariate_combinations,
-            run_lineage_effects    = run_lineage_effects,
-            lineage_clusters       = lineage_clusters,
-            distance_matrix        = pyseer_similarity_from_phylogeny.distance_matrix,
             min_af                 = min_af,
             max_af                 = max_af,
             cpu                    = association_cpu,
             mem_gb                 = association_mem_gb,
             docker                 = docker
+    }
+
+    # Lineage effects are deliberately their own call, against a minimal
+    # slice of presence_absence_rtab, not folded into pyseer_association's
+    # full-scale --lmm run - see pyseer_lineage_effects's meta.description.
+    if (run_lineage_effects) {
+        call pyseer_tasks.pyseer_lineage_effects {
+            input:
+                phenotype_tsv         = phenotype_tsv,
+                presence_absence_rtab = presence_absence_rtab,
+                distance_matrix       = pyseer_similarity_from_phylogeny.distance_matrix,
+                lineage_clusters      = lineage_clusters,
+                covariates_file       = covariates_file,
+                use_covariates        = use_covariates,
+                docker                = docker
+        }
     }
 
     if (defined(annotation_table)) {
@@ -134,7 +147,8 @@ workflow pyseer_gwas {
         File?        snp_patterns            = pyseer_association.snp_patterns
         File?        snp_log                 = pyseer_association.snp_log
 
-        File?        lineage_effects         = pyseer_association.lineage_effects
+        File?        lineage_effects         = pyseer_lineage_effects.lineage_effects
+        File?        lineage_pass_log        = pyseer_lineage_effects.lineage_pass_log
         Array[File]  covariate_scan_results  = pyseer_association.covariate_scan_results
         File         covariate_scan_combined = pyseer_association.covariate_scan_combined
 

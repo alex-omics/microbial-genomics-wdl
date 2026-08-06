@@ -78,6 +78,76 @@ task pyseer_similarity_from_phylogeny {
     }
 }
 
+task pyseer_lineage_effects {
+
+    input {
+        File            phenotype_tsv
+        File            presence_absence_rtab
+        File            distance_matrix
+        File?           lineage_clusters
+        File?           covariates_file
+        String?         use_covariates
+
+        Int             cpu     = 1
+        Int             mem_gb  = 4
+        Int             disk_gb = 10
+        String          docker  = "aarvani1/pyseer:1.4.2@sha256:20ba84511a4a7ebca154292b8a2af5e873556dbacd27999c5045c76f4f71d10c"
+    }
+
+    parameter_meta {
+        phenotype_tsv:         "Two columns: sample_id\\tphenotype_value"
+        presence_absence_rtab: "block_id x isolate 0/1 matrix - only the first few blocks are actually used, see meta.description"
+        distance_matrix:       "From pyseer_similarity_from_phylogeny. pyseer's --lineage refuses to run without one, even with lineage_clusters supplied."
+        lineage_clusters:      "Two columns sample_id\\tcluster_id (e.g. BAPS), passed as --lineage-clusters. Falls back to pyseer's MDS-derived lineages if omitted."
+        covariates_file:       "Tab-separated: sample_id, then one named column per covariate. Passed through so lineage effects are adjusted the same way as the main association."
+        use_covariates:        "pyseer --use-covariates value, matching whatever was applied to the main association's covariates_file"
+        cpu:                   "Number of CPUs delegated to task (default = 1)"
+        mem_gb:                "Amount of memory in GB delegated to task (default = 4)"
+        disk_gb:               "Amount of disk space in GB delegated to task (default = 10)"
+        docker:                "Container image"
+    }
+
+    meta {
+        description: "Report per-lineage effects as their own minimal-input pyseer call, deliberately never combined with the full variant-testing association. Mirrors the pattern already validated in the microGWAS translation (tasks/gwas/task_pyseer.wdl run_pyseer): that task's own comment says the lineage pass 'exists to produce the per-lineage effect table, not association statistics, so pyseer is given only enough input to initialise' - it feeds pyseer a 10-line slice of the real variant file, not the whole thing. This task does the same against presence_absence_rtab. Folding --lineage into the main --lmm call against the *full* Rtab is what caused an unexplained OOM against real 200-isolate BBSS data (6,427 variants, 2.5 MB Rtab) that killed a 32 GB machine in under a minute - too fast and too small to be a real memory shortage, and consistent with pyseer's lineage-effects code path and the full per-variant LMM loop compounding in one process."
+    }
+
+    command <<<
+        set -euo pipefail
+
+        head -n 10 ~{presence_absence_rtab} > small.Rtab
+
+        pyseer \
+            --phenotypes ~{phenotype_tsv} \
+            --pres small.Rtab \
+            --distances ~{distance_matrix} \
+            --lineage --lineage-file lineage_effects.txt \
+            --cpu ~{cpu} \
+            ~{if defined(lineage_clusters) then "--lineage-clusters " + lineage_clusters else ""} \
+            ~{if defined(covariates_file) then "--covariates " + covariates_file else ""} \
+            ~{if defined(use_covariates) then "--use-covariates " + use_covariates else ""} \
+            > lineage_pass.log \
+            2> lineage_pass_stderr.log
+
+        echo "Lineage effects complete:"
+        wc -l lineage_effects.txt
+    >>>
+
+    output {
+        File lineage_effects     = "lineage_effects.txt"
+        File lineage_pass_log    = "lineage_pass.log"
+        File lineage_pass_stderr = "lineage_pass_stderr.log"
+    }
+
+    runtime {
+        docker:         docker
+        memory:         "~{mem_gb} GB"
+        cpu:            cpu
+        disks:          "local-disk ~{disk_gb} SSD"
+        preemptible:    1
+        maxRetries:     2
+    }
+}
+
 task pyseer_association {
 
     input {
@@ -108,10 +178,6 @@ task pyseer_association {
         # not a black-box powerset search.
         Array[String]   covariate_combinations = []
 
-        Boolean         run_lineage_effects = false
-        File?           lineage_clusters
-        File?           distance_matrix
-
         Int             cpu     = 4
         Int             mem_gb  = 8
         Int             disk_gb = 30
@@ -128,9 +194,6 @@ task pyseer_association {
         covariates_file:       "Tab-separated: sample_id, then one named column per covariate (e.g. RST, OspC, MLST, BAPS)"
         use_covariates:        "pyseer --use-covariates value (column indices into covariates_file, 'q' suffix for quantitative) applied jointly to the main association"
         covariate_combinations: "Groups of covariates_file column names to test together, one group per pyseer run. Each entry is one or more column names joined with '+' (e.g. 'BAPS' or 'RST+OspC+BAPS'); a bare name is a single-covariate run. Column names must not contain '+', whitespace, or tabs."
-        run_lineage_effects:   "Add --lineage to the main association call and emit lineage_effects.txt (default = false)"
-        lineage_clusters:      "Two columns sample_id\\tcluster_id (e.g. BAPS), passed as --lineage-clusters. Falls back to pyseer's MDS-derived lineages if omitted."
-        distance_matrix:       "From pyseer_similarity_from_phylogeny. Required whenever run_lineage_effects is true - pyseer's --lineage refuses to run without a distance matrix, even with lineage_clusters supplied."
         cpu:                   "Number of CPUs delegated to task (default = 4)"
         mem_gb:                "Amount of memory in GB delegated to task (default = 8)"
         disk_gb:               "Amount of disk space in GB delegated to task (default = 30)"
@@ -138,7 +201,7 @@ task pyseer_association {
     }
 
     meta {
-        description: "Run pyseer's LMM association (likelihood-ratio test) of presence/absence blocks against a phenotype, correcting for population structure via a phylogeny-derived kinship matrix. Optionally reports lineage effects, scans deliberately-chosen covariate combinations, and runs an additional SNP-based pass if a VCF is supplied."
+        description: "Run pyseer's LMM association (likelihood-ratio test) of presence/absence blocks against a phenotype, correcting for population structure via a phylogeny-derived kinship matrix. Scans deliberately-chosen covariate combinations and runs an additional SNP-based pass if a VCF is supplied. Lineage effects are a separate task (pyseer_lineage_effects) - see its meta.description for why folding --lineage into this call is dangerous at real scale."
     }
 
     command <<<
@@ -147,13 +210,6 @@ task pyseer_association {
         echo "=== pyseer association ==="
         wc -l ~{phenotype_tsv}
         head -1 ~{presence_absence_rtab} | awk '{print NF-1 " isolates"}'
-
-        if ~{if run_lineage_effects then "true" else "false"} && [ -z "~{default="" distance_matrix}" ]; then
-            echo "ERROR: run_lineage_effects is true but distance_matrix was not supplied." >&2
-            echo "       pyseer's --lineage requires a distance matrix even when lineage_clusters is set." >&2
-            echo "       Pass pyseer_similarity_from_phylogeny.distance_matrix through." >&2
-            exit 1
-        fi
 
         # --- Presence/absence association (primary analysis) ---
         pyseer \
@@ -165,11 +221,8 @@ task pyseer_association {
             --max-af ~{max_af} \
             --cpu ~{cpu} \
             --output-patterns gene_patterns.txt \
-            ~{if defined(distance_matrix) then "--distances " + distance_matrix else ""} \
             ~{if defined(covariates_file) then "--covariates " + covariates_file else ""} \
             ~{if defined(use_covariates) then "--use-covariates " + use_covariates else ""} \
-            ~{if run_lineage_effects then "--lineage --lineage-file lineage_effects.txt" else ""} \
-            ~{if defined(lineage_clusters) then "--lineage-clusters " + lineage_clusters else ""} \
             > pyseer_gene_results.tsv \
             2> pyseer_gene_stderr.log
 
@@ -281,7 +334,6 @@ pd.concat(frames, ignore_index=True).to_csv('covariate_scan_combined.tsv', sep='
         File?           snp_results            = "pyseer_snp_results.tsv"
         File?           snp_patterns           = "snp_patterns.txt"
         File?           snp_log                = "pyseer_snp_stderr.log"
-        File?           lineage_effects        = "lineage_effects.txt"
         Array[File]     covariate_scan_results = glob("covariate_scan/*.tsv")
         File            covariate_scan_combined = "covariate_scan_combined.tsv"
     }
