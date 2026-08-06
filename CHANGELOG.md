@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 ### Added
+- `pyseer_gwas` - Standalone pyseer LMM/LRT association workflow, independently callable in Terra. Accepts any block x isolate presence/absence Rtab (Panaroo gene families or pangenome-network modules), with optional `--lineage` effects, a `covariate_combinations` scan (deliberate single- or multi-column groups, not an automatic powerset search), and a gene/module-annotation join that never modifies pyseer's own output. README documents, with measurements against the real image, that RST/OspC/MLST/BAPS are categorical (never quantitative) and that jointly loading several of them is a real degrees-of-freedom risk, not just a style choice
+- `aarvani1/pyseer:1.4.2` - Lean standalone pyseer image, deliberately separate from `microgwas-pyseer` (which backs `multimodal_gwas` and carries that pipeline's dependencies). Built and pushed to Docker Hub, digest-pinned in `tasks/pyseer.wdl` and `workflows/pyseer_gwas/pyseer_gwas.wdl` (see `docker/pyseer/CHANGELOG.md`)
 - `multimodal_gwas` - Terra WDL translation of microGWAS (Burgaya et al. 2025), targeting faithful reproduction of the published *E. coli* virulence GWAS as Milestone 1
 - `workflows/assembly_qc/assembly_qc.wdl` - Scatters QUAST, BUSCO, and CheckM2 over a set of assemblies and emits one merged summary TSV
 - `tasks/checkm2.wdl` - CheckM2 completeness and contamination, with the DIAMOND database supplied as a `File` input (Terra-native) or downloaded at runtime
@@ -9,6 +11,7 @@
 - `tasks/busco.wdl` - Reusable BUSCO task with auto-lineage and explicit lineage support, plus an optional lineage tarball override
 
 ### Fixed
+- `tasks/pyseer.wdl` - `pyseer_association` with `run_lineage_effects` set failed inside the container ("Must also provide a distance matrix to report lineage effects"): pyseer's `--lineage` requires `--distances` unconditionally, even when `lineage_clusters` is supplied - it is not just the fallback for MDS-derived lineages. `pyseer_similarity_from_phylogeny` now also emits a plain (non-`--lmm`) distance matrix from the same tree, wired through automatically at the workflow level. Caught by the new end-to-end smoke test in `tests/run_unit_tests.sh`, which a single-task fixture test could not have caught
 - `tasks/busco.wdl` - Pointed `--download_path` at the consolidated `/busco_downloads`; the previous path held no manifest, so auto-lineage could not run and only spirochaete datasets resolved
 - `tasks/busco.wdl` - `grep` for the lineage-used line had the filename inside the pattern with no file argument, so it read stdin and returned nothing
 - `tasks/busco.wdl` - Summary was copied from `<sample>_busco/` while BUSCO wrote to `<sample>/`; auto-lineage also emits several `short_summary*` files, which broke the glob

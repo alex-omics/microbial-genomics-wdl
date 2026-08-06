@@ -1,0 +1,5 @@
+Gene,Non-unique Gene name,Annotation,sample1,sample2
+group_0001,geneA,"iron uptake, siderophore synthesis",group_0001_s1,group_0001_s2
+group_0002,geneB,membrane transporter,,group_0002_s2
+group_0003,,hypothetical protein,group_0003_s1,
+group_0004,geneD,housekeeping gene,group_0004_s1,group_0004_s2

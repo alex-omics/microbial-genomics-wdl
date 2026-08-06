@@ -1,0 +1,6 @@
+Gene	sample1	sample2	sample3	sample4	sample5	sample6	sample7	sample8
+group_0001	1	1	1	1	0	0	0	0
+group_0002	0	0	0	0	1	1	1	1
+group_0003	1	0	1	0	1	0	1	0
+group_0004	1	1	1	1	1	1	1	1
+group_0005	0	1	0	1	0	1	0	1

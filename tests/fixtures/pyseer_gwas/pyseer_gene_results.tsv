@@ -1,0 +1,4 @@
+variant	af	filter-pvalue	lrt-pvalue	beta	beta-std-err	variant_h2	notes
+group_0001	0.5	0.0001234	1.2e-15	0.987654321	0.123456789	0.456789	.
+group_0002	0.333333	0.5	0.05	-0.5	0.2	0.1	bad-chisq
+group_0003	0.1	0.9	0.9	0.01	0.5	0.001	.
