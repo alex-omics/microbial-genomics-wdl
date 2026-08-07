@@ -6,7 +6,7 @@ WDL workflows for studying the genomes of bacterial and other microbial pathogen
 | -------- | ----------- | --------- |
 | annotate_assembly | Annotate an assembled genome with optional reference input  | 🔜 Planned |
 | [assembly_qc](workflows/assembly_qc) | QUAST + BUSCO + CheckM2 over a set of assemblies, collapsed into one summary table | ✅ Available |
-| fetch_sra_reads | Pulls fastq.gz files from Sequence Read Archive into Terra | 🚧 In development |
+| [fetch_reads_from_sra](workflows/fetch_reads_from_sra) | Fetches a single SRA/ENA/DDBJ run and emits gzip-compressed FASTQ, with the platform and layout it actually extracted | ✅ Available |
 | multimodal_gwas | Use multiple statistical approaches to correlate genes or variants to phenotypes | 🚧 In development |
 | polish_assembly | Uses short reads to improve a long-read assembly | 🚧 In development |
 | [pyseer_gwas](workflows/pyseer_gwas) | Standalone pyseer LMM/LRT association over a gene or pangenome-module Rtab, with lineage effects and deliberate covariate-combination scanning | ✅ Available |

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Fixture tests for the pyseer_gwas tasks.
+# Fixture tests for this repo's workflows (pyseer_gwas, fetch_reads_from_sra).
 #
 # These run the REAL WDL task via miniwdl rather than a copy of its logic, so
 # the test cannot drift away from what the workflow actually executes.
@@ -9,11 +9,16 @@
 # thin wrapper around pyseer itself, so it's the part most likely to produce
 # a plausible-looking wrong answer rather than an error: a silently dropped
 # unmatched variant, a p-value that rounds to 0.000000, or a comma inside a
-# free-text annotation shifting every column after it. The final section runs
-# the whole workflow end to end against the real pyseer image, which is what
-# actually catches wiring bugs between tasks - see the comment there.
+# free-text annotation shifting every column after it. The pyseer_gwas
+# section runs the whole workflow end to end against the real pyseer image,
+# which is what actually catches wiring bugs between tasks - see the comment
+# there. The fetch_reads_from_sra section runs fasterq_dump against real,
+# tiny public accessions to prove paired-end and single-end layout detection
+# both work against the actual tool, not a mocked one - see the comment
+# there for why single-end coverage specifically matters.
 #
-# Requires: miniwdl, docker, python3.
+# Requires: miniwdl, docker, python3. The fetch_reads_from_sra section also
+# needs outbound network access (NCBI SRA + ENA).
 # Usage: tests/run_unit_tests.sh
 
 set -euo pipefail
@@ -159,6 +164,49 @@ check "readable: variant absent from smoke_annotation.csv is 'no match'" \
 check "covariate_scan_combined_annotated: gene_name/annotation joined without disturbing the covariates column" \
     "variant	gene_name	annotation	covariates	af	filter-pvalue	lrt-pvalue	beta	beta-std-err	variant_h2	notes" \
     "$(head -1 "${SMOKE_COVSCAN_ANNOTATED}")"
+
+# --------------------------------------------------------------------------
+echo "fetch_reads_from_sra (fasterq_dump, real sra-tools, paired-end)"
+# DRR727328 is a real, tiny (~25 KB gzipped) paired-end Illumina WGS run for
+# Lacticaseibacillus rhamnosus GG. Confirms the common case still works
+# exactly as before: both _1/_2 produced, layout detected from the actual
+# files (not from SRA/ENA metadata, which can be stale), platform looked up.
+miniwdl run "${REPO}/tasks/sra_tools.wdl" --task fasterq_dump \
+    accession=DRR727328 \
+    disk_gb=20 \
+    --dir "${WORK}/sra_pe" --verbose > "${WORK}/sra_pe.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/sra_pe.log"; sed -n '$p' "${WORK}/sra_pe.log"; exit 1; }
+
+check "paired: layout" "paired" \
+    "$(find "${WORK}/sra_pe" -name LAYOUT -exec cat {} \;)"
+check "paired: read1 produced and non-empty" "1" \
+    "$(find "${WORK}/sra_pe" -path '*out/read1*' -name '*.fastq.gz' -size +0 | wc -l | tr -d ' ')"
+check "paired: read2 produced and non-empty" "1" \
+    "$(find "${WORK}/sra_pe" -path '*out/read2*' -name '*.fastq.gz' -size +0 | wc -l | tr -d ' ')"
+check "paired: read_format" "ILLUMINA_paired" \
+    "$(find "${WORK}/sra_pe" -name READ_FORMAT -exec cat {} \;)"
+
+# --------------------------------------------------------------------------
+echo "fetch_reads_from_sra (fasterq_dump, real sra-tools, single-end)"
+# DRR572312 is a real, tiny (~19 KB) single-end ONT run for E. coli. This is
+# the regression test for the bug that motivated porting this workflow in:
+# the original script hardcoded gzip on _1/_2, which does not exist for a
+# single-end run, and would have failed outright here. read2 must NOT be
+# produced (not even empty) - it's an unset optional output, not a file.
+miniwdl run "${REPO}/tasks/sra_tools.wdl" --task fasterq_dump \
+    accession=DRR572312 \
+    disk_gb=20 \
+    --dir "${WORK}/sra_se" --verbose > "${WORK}/sra_se.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/sra_se.log"; sed -n '$p' "${WORK}/sra_se.log"; exit 1; }
+
+check "single: layout" "single" \
+    "$(find "${WORK}/sra_se" -name LAYOUT -exec cat {} \;)"
+check "single: read1 produced and non-empty" "1" \
+    "$(find "${WORK}/sra_se" -path '*out/read1*' -name '*.fastq.gz' -size +0 | wc -l | tr -d ' ')"
+check "single: read2 is not produced" "0" \
+    "$(find "${WORK}/sra_se" -path '*out/read2*' -name '*.fastq.gz' | wc -l | tr -d ' ')"
+check "single: read_format" "OXFORD_NANOPORE_single" \
+    "$(find "${WORK}/sra_se" -name READ_FORMAT -exec cat {} \;)"
 
 # --------------------------------------------------------------------------
 echo
