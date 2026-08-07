@@ -139,6 +139,7 @@ miniwdl run "${REPO}/workflows/pyseer_gwas/pyseer_gwas.wdl" \
 SMOKE_GENE_RESULTS="$(find "${WORK}/smoke" -path '*call-pyseer_association*' -name 'pyseer_gene_results.tsv' | head -1)"
 SMOKE_LINEAGE="$(find "${WORK}/smoke" -path '*call-pyseer_lineage_effects*' -name 'lineage_effects.txt' | head -1)"
 SMOKE_READABLE="$(find "${WORK}/smoke" -path '*call-annotate_all*' -name 'pyseer_gene_results_readable.tsv' | head -1)"
+SMOKE_COVSCAN_ANNOTATED="$(find "${WORK}/smoke" -path '*call-annotate_covariate_scan*' -name 'pyseer_covariate_scan_combined_annotated.tsv' | head -1)"
 
 check "gene_results: invariant core gene filtered by max_af" \
     "0" \
@@ -155,6 +156,9 @@ check "covariate_scan_results: multi-column combination ran as one joint pyseer 
 check "readable: variant absent from smoke_annotation.csv is 'no match'" \
     "no match" \
     "$(awk -F'\t' '$1=="group_0005" {print $2}' "${SMOKE_READABLE}")"
+check "covariate_scan_combined_annotated: gene_name/annotation joined without disturbing the covariates column" \
+    "variant	gene_name	annotation	covariates	af	filter-pvalue	lrt-pvalue	beta	beta-std-err	variant_h2	notes" \
+    "$(head -1 "${SMOKE_COVSCAN_ANNOTATED}")"
 
 # --------------------------------------------------------------------------
 echo
