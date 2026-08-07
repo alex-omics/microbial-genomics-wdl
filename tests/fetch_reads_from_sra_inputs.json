@@ -1,0 +1,5 @@
+{
+  "__comment": "Works unmodified for both local (miniwdl/Cromwell) and Terra runs - accession is a plain string, not a gs:// path. DRR727328 is a real, tiny (~25 KB gzipped) paired-end Illumina WGS run for Lacticaseibacillus rhamnosus GG, picked via the ENA search API for a fast/cheap smoke test.",
+  "fetch_reads_from_sra.accession": "DRR727328",
+  "fetch_reads_from_sra.disk_gb": 20
+}

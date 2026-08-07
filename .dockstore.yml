@@ -29,6 +29,20 @@ workflows:
         - main
         - feature/assembly-qc-tasks
 
+  - name: fetch_reads_from_sra
+    subclass: WDL
+    primaryDescriptorPath: /workflows/fetch_reads_from_sra/fetch_reads_from_sra.wdl
+    readMePath: /workflows/fetch_reads_from_sra/README.md
+    testParameterFiles:
+      - /tests/fetch_reads_from_sra_inputs.json
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/fetch-reads-from-sra
+
   - name: multimodal_gwas
     subclass: WDL
     primaryDescriptorPath: /workflows/multimodal_gwas/wf_multimodal_gwas.wdl
