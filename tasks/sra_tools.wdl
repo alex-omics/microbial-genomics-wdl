@@ -106,7 +106,6 @@ task fasterq_dump {
         fi
         echo "${PLATFORM}" > PLATFORM
         echo "${INSTRUMENT}" > INSTRUMENT
-        echo "${PLATFORM}_$(cat LAYOUT)" > READ_FORMAT
     >>>
 
     output {
@@ -116,7 +115,6 @@ task fasterq_dump {
         String layout            = read_string("LAYOUT")
         String platform          = read_string("PLATFORM")
         String instrument_model  = read_string("INSTRUMENT")
-        String read_format       = read_string("READ_FORMAT")
         String sra_tools_version = read_string("SRA_TOOLS_VERSION")
     }
 

@@ -30,9 +30,9 @@ the first time you run a version of this workflow that adds one.
    anything else. This matters in practice: single-end output is the norm for ONT/PacBio
    long-read runs, not an edge case.
 4. Looks up the run's platform and instrument from ENA's public metadata API (no
-   credentials needed) and reports it alongside the layout it detected from the actual
-   files, so you can tell at a glance whether a given row is `ILLUMINA_paired`,
-   `OXFORD_NANOPORE_single`, etc.
+   credentials needed) and reports it as its own column alongside `layout`, so a Terra
+   table full of accessions can be filtered or sorted by either independently - e.g. all
+   single-end ONT rows - without parsing a combined string back apart.
 
 ## Inputs
 
@@ -67,7 +67,6 @@ run accessions into this workflow — rather than a reason to change this workfl
 | `layout` | `String` | `paired` or `single`, determined from which files were actually produced — not from (sometimes stale) SRA/ENA metadata |
 | `platform` | `String` | e.g. `ILLUMINA`, `OXFORD_NANOPORE`, `PACBIO_SMRT`, from ENA's metadata. `unknown` if the lookup fails or the run isn't mirrored to ENA yet — this never blocks the fastq output, which is the point of the workflow |
 | `instrument_model` | `String` | e.g. `Illumina MiSeq`, `MinION`. Same best-effort caveat as `platform` |
-| `read_format` | `String` | Convenience combination of the two above, e.g. `ILLUMINA_paired`, `OXFORD_NANOPORE_single` |
 | `sra_tools_version` | `String` | Version of `sra-tools` used, from the pinned image |
 
 ## Running

@@ -183,8 +183,8 @@ check "paired: read1 produced and non-empty" "1" \
     "$(find "${WORK}/sra_pe" -path '*out/read1*' -name '*.fastq.gz' -size +0 | wc -l | tr -d ' ')"
 check "paired: read2 produced and non-empty" "1" \
     "$(find "${WORK}/sra_pe" -path '*out/read2*' -name '*.fastq.gz' -size +0 | wc -l | tr -d ' ')"
-check "paired: read_format" "ILLUMINA_paired" \
-    "$(find "${WORK}/sra_pe" -name READ_FORMAT -exec cat {} \;)"
+check "paired: platform" "ILLUMINA" \
+    "$(find "${WORK}/sra_pe" -name PLATFORM -exec cat {} \;)"
 
 # --------------------------------------------------------------------------
 echo "fetch_reads_from_sra (fasterq_dump, real sra-tools, single-end)"
@@ -205,8 +205,8 @@ check "single: read1 produced and non-empty" "1" \
     "$(find "${WORK}/sra_se" -path '*out/read1*' -name '*.fastq.gz' -size +0 | wc -l | tr -d ' ')"
 check "single: read2 is not produced" "0" \
     "$(find "${WORK}/sra_se" -path '*out/read2*' -name '*.fastq.gz' | wc -l | tr -d ' ')"
-check "single: read_format" "OXFORD_NANOPORE_single" \
-    "$(find "${WORK}/sra_se" -name READ_FORMAT -exec cat {} \;)"
+check "single: platform" "OXFORD_NANOPORE" \
+    "$(find "${WORK}/sra_se" -name PLATFORM -exec cat {} \;)"
 
 # --------------------------------------------------------------------------
 echo

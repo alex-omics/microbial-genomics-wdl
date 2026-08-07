@@ -56,7 +56,6 @@ workflow fetch_reads_from_sra {
         String layout            = fasterq_dump.layout              # -> this.layout
         String platform          = fasterq_dump.platform            # -> this.platform
         String instrument_model  = fasterq_dump.instrument_model    # -> this.instrument_model
-        String read_format       = fasterq_dump.read_format         # -> this.read_format
         String sra_tools_version = fasterq_dump.sra_tools_version   # -> this.sra_tools_version
     }
 }
