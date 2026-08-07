@@ -27,7 +27,7 @@ same pyseer version but use separate Docker images (`aarvani1/pyseer` vs.
 | Lineage effects *(optional)* | `pyseer --lineage`, own minimal-input call | `lineage_effects` |
 | Covariate combination scan *(optional)* | `pyseer --use-covariates`, once per combination | `covariate_scan_results`, `covariate_scan_combined` |
 | SNP association *(optional)* | `pyseer --vcf` | `snp_results` |
-| Name/annotation join *(optional)* | pandas left join, never touches pyseer's own files | `gene_results_annotated`, `gene_results_readable` (+ the same pair for `gene_significant`) |
+| Name/annotation join *(optional)* | pandas left join, never touches pyseer's own files | `gene_results_annotated`, `gene_results_readable`, and the same pair for `covariate_scan_combined` (not `gene_significant` - it's a subset of `gene_results`, filter the annotated file instead) |
 
 ## Inputs
 

@@ -41,9 +41,13 @@ workflow pyseer_gwas {
         Boolean         run_lineage_effects = false
         File?           lineage_clusters
 
-        # Gene/module-name annotation join, applied to gene_results and
-        # gene_significant. Left unset, the workflow still runs and simply
-        # skips the join (see pyseer_annotate_results).
+        # Gene/module-name annotation join, applied to gene_results and to
+        # the covariate_combinations scan's long-format table. Left unset,
+        # the workflow still runs and simply skips the join (see
+        # pyseer_annotate_results). gene_significant is a subset of
+        # gene_results (same variants, same columns), so it is not annotated
+        # separately - filter gene_results_annotated for the rows of
+        # interest instead.
         File?           annotation_table
         String          annotation_id_column         = "Gene"
         String          annotation_name_column        = "Non-unique Gene name"
@@ -121,14 +125,18 @@ workflow pyseer_gwas {
                 docker            = docker
         }
 
-        call pyseer_tasks.pyseer_annotate_results as annotate_significant {
+        # Same join, same annotation_table, against the covariate_combinations
+        # long-format table - id_column still matches on the "variant" column
+        # pyseer_annotate_results looks for, regardless of the extra
+        # "covariates" column covariate_scan_combined carries.
+        call pyseer_tasks.pyseer_annotate_results as annotate_covariate_scan {
             input:
-                pyseer_results    = pyseer_association.gene_significant,
+                pyseer_results    = pyseer_association.covariate_scan_combined,
                 annotation_table  = annotation_table,
                 id_column         = annotation_id_column,
                 name_column       = annotation_name_column,
                 annotation_column = annotation_description_column,
-                basename          = "pyseer_gene_significant",
+                basename          = "pyseer_covariate_scan_combined",
                 docker            = docker
         }
     }
@@ -152,9 +160,9 @@ workflow pyseer_gwas {
         Array[File]  covariate_scan_results  = pyseer_association.covariate_scan_results
         File         covariate_scan_combined = pyseer_association.covariate_scan_combined
 
-        File?        gene_results_annotated       = annotate_all.annotated
-        File?        gene_results_readable        = annotate_all.readable
-        File?        gene_significant_annotated   = annotate_significant.annotated
-        File?        gene_significant_readable    = annotate_significant.readable
+        File?        gene_results_annotated            = annotate_all.annotated
+        File?        gene_results_readable             = annotate_all.readable
+        File?        covariate_scan_combined_annotated = annotate_covariate_scan.annotated
+        File?        covariate_scan_combined_readable  = annotate_covariate_scan.readable
     }
 }
