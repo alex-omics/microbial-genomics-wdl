@@ -11,6 +11,9 @@
 - `busco-prokaryota:5.8.0` - Docker image with the complete OrthoDB v10 prokaryote set (99 datasets) plus placement files for offline auto-lineage
 - `tasks/busco.wdl` - Reusable BUSCO task with auto-lineage and explicit lineage support, plus an optional lineage tarball override
 
+### Removed
+- `workflows/bacterial/`, `workflows/eukaryotic/`, `workflows/viral/` - Empty domain-grouping skeleton directories (each held only a blank `README.md`) from the repo's initial scaffold. Every workflow built so far (`assembly_qc`, `pyseer_gwas`, `fetch_reads_from_sra`) already lives flat under `workflows/<name>/`, so the domain subdirectories were unused digital clutter rather than a structure anything actually depends on
+
 ### Changed
 - `workflows/pyseer_gwas/pyseer_gwas.wdl` - Dropped the separate `annotate_significant` call; `gene_significant` is a row subset of `gene_results` with identical columns, so annotating it separately was redundant - filter `gene_results_annotated` instead. Added an equivalent annotation join for the `covariate_combinations` scan's long-format table (`covariate_scan_combined` -> `covariate_scan_combined_annotated`/`_readable`), which had never been joined against the Panaroo annotation table before
 
