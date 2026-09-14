@@ -137,7 +137,7 @@ task modkit_find_motifs {
         File     bedmethyl
         String   sample_name
         File     reference_fasta
-        Int      cpu     = 8
+        Int      cpu     = 32
         Int      mem_gb  = 32
         Int      disk_gb = 100
         String   docker  = "quay.io/biocontainers/ont-modkit:0.6.4--h7f49ad2_0@sha256:003ed784097737910c19abbe71fa2dffc32f888d228e5b5b12c4ec2adb799e0f"
@@ -147,7 +147,7 @@ task modkit_find_motifs {
         bedmethyl:       "Uncompressed bedMethyl from modkit_pileup"
         sample_name:     "Some identifier for naming outputs"
         reference_fasta: "The same reference the pileup was called against"
-        cpu:             "Number of CPUs delegated to task (default = 8)"
+        cpu:             "Number of CPUs delegated to task. modkit's own docs: the seed search 'takes advantage of parallelism at nearly every step and hugely benefits from running with as many threads as possible' -- their own example uses --threads 32, which is why this default is higher than the rest of this pipeline's tasks (default = 32)"
         mem_gb:          "Amount of memory in GB delegated to task (default = 32)"
         disk_gb:         "Amount of disk space in GB delegated to task (default = 100)"
         docker:          "Container image"
