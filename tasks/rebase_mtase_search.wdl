@@ -100,10 +100,19 @@ task rebase_join_motifs {
         with open(motif_path, newline="", encoding="utf-8", errors="replace") as fh:
             for row in csv.DictReader(fh, delimiter="\t"):
                 enzyme = row.get("Enzyme", "").strip()
-                motif  = row.get("Motif", "").strip()
+                motif_field = row.get("Motif", "").strip()
                 modt   = row.get("MethylationType", "").strip()
-                if enzyme and motif and motif != "?":
-                    enzyme_motifs[enzyme].add((motif, modt))
+                if not (enzyme and motif_field and motif_field != "?"):
+                    continue
+                # Some REBASE entries recognise more than one degenerate
+                # sequence under the same enzyme/modification (e.g. M.BceSV:
+                # "GGCC,GCNGC,CCGG,GGNCC"). Treat each as its own motif --
+                # passing the comma-joined string through as one motif is
+                # not valid IUPAC and crashes downstream regex translation.
+                for motif in motif_field.split(","):
+                    motif = motif.strip()
+                    if motif:
+                        enzyme_motifs[enzyme].add((motif, modt))
 
         with open(hits_path, newline="") as fh, open(out_path, "w", newline="") as out:
             w = csv.writer(out, delimiter="\t", lineterminator="\n")

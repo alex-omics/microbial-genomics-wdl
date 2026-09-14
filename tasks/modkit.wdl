@@ -154,7 +154,7 @@ task modkit_find_motifs {
     }
 
     meta {
-        description: "De novo discovery of methylated sequence motifs. In bacteria these correspond to restriction-modification system recognition sites, so the motif inventory is effectively a readout of which MTases the isolate carries — which is the control you need before attributing any cross-isolate methylation difference to regulation."
+        description: "De novo discovery of methylated sequence motifs. In bacteria these correspond to restriction-modification system recognition sites, so the motif inventory is effectively a readout of which MTases the isolate carries — which is the control you need before attributing any cross-isolate methylation difference to regulation. This can run for an hour or more on a deeply-covered genome and has no checkpointing, so a mid-run preemption forces a full restart -- see runtime.preemptible."
     }
 
     command <<<
@@ -173,8 +173,10 @@ task modkit_find_motifs {
 
         # One line per discovered motif, tab separated. Collapse to a single
         # comma-joined string so it can ride along in the summary table.
+        # Column 2 is the motif sequence itself; column 1 is the mod code
+        # (e.g. "a"), which is the same for every row and not useful here.
         if [ -s ~{sample_name}_motifs.tsv ]; then
-            awk -F'\t' 'NR>1 {printf "%s%s", sep, $1; sep=","} END {print ""}' \
+            awk -F'\t' 'NR>1 {printf "%s%s", sep, $2; sep=","} END {print ""}' \
                 ~{sample_name}_motifs.tsv > MOTIFS
             awk 'NR>1 {n++} END {print n+0}' ~{sample_name}_motifs.tsv > N_MOTIFS
         else
@@ -195,7 +197,12 @@ task modkit_find_motifs {
         memory:         "~{mem_gb} GB"
         cpu:            cpu
         disks:          "local-disk ~{disk_gb} SSD"
-        preemptible:    1
+        # Same reasoning as panaroo's own preemptible:0 -- this step can run
+        # over an hour on a deeply-covered genome with no checkpointing, so a
+        # preemption late in the run wastes the whole thing and just retries
+        # into another preemption. Costs more per isolate; worth it for a
+        # step this long and this likely to get preempted before finishing.
+        preemptible:    0
         maxRetries:     2
     }
 }

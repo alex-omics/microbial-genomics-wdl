@@ -141,6 +141,16 @@ check "characterised motif carried through" "GATC" \
     "$(awk -F'\t' '$2=="ISO1_00010"{print $7}' "${WORK}/rebase_out.tsv")"
 check "unknown-motif hit kept as NA, not dropped" "NA" \
     "$(awk -F'\t' '$2=="ISO1_00099"{print $7}' "${WORK}/rebase_out.tsv")"
+# REBASE entries recognising more than one degenerate sequence for the same
+# enzyme (e.g. M.BceSV: "GGCC,GCNGC,CCGG,GGNCC") pack them into one
+# comma-joined Motif field. Passing that string through unsplit produced a
+# non-IUPAC "motif" that crashed motif_landscape's regex translation on the
+# literal comma -- caught only by running the real 14-isolate panel.
+check "comma-joined REBASE motif splits into separate rows" "2" \
+    "$(awk -F'\t' '$2=="ISO1_00040"' "${WORK}/rebase_out.tsv" | wc -l | tr -d ' ')"
+check "each split motif is valid IUPAC, no literal comma" "GCNGC
+GGCC" \
+    "$(awk -F'\t' '$2=="ISO1_00040"{print $7}' "${WORK}/rebase_out.tsv" | sort)"
 
 # --------------------------------------------------------------------------
 echo "build_motif_list"
