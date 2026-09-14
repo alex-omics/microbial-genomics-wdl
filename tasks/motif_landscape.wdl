@@ -127,7 +127,7 @@ task motif_landscape {
         set -euo pipefail
 
         cat > landscape.py <<'PY'
-        import csv, math, re, statistics, sys
+        import bisect, csv, math, re, statistics, sys
         from collections import defaultdict
 
         bedmethyl_path, motif_path, ref_path, sample, mincov, low_cut, out_path = sys.argv[1:8]
@@ -178,20 +178,33 @@ task motif_landscape {
             for row in csv.DictReader(fh, delimiter="\t"):
                 motifs.append((row["motif"].strip().upper(), row["mod_code"].strip()))
 
-        # windows[(motif, mod_code)] = {contig: [(start, end), ...]}
+        # windows[(motif, mod_code)] = {contig: [start, start, ...]}, each
+        # contig's starts sorted ascending (find_occurrences already returns
+        # them sorted). Every window for one motif shares the same length,
+        # so storing just the start is enough to reconstruct membership.
         windows = {}
         for motif, code in motifs:
             per_contig = {}
             for contig, seq in seqs.items():
                 occ = find_occurrences(seq, motif)
                 if occ:
-                    per_contig[contig] = [(p, p + len(motif)) for p in occ]
+                    per_contig[contig] = occ
             windows[(motif, code)] = per_contig
 
-        def in_any_window(contig, pos, per_contig):
-            for s, e in per_contig.get(contig, []):
-                if s <= pos < e:
-                    return s
+        def in_any_window(contig, pos, per_contig, motif_len):
+            starts = per_contig.get(contig)
+            if not starts:
+                return None
+            # A window covers pos iff its start falls in
+            # [pos-motif_len+1, pos]; binary-search that range instead of
+            # scanning every occurrence. With a motif occurring thousands
+            # of times and millions of bedMethyl rows to test, the linear
+            # scan was O(sites x occurrences) -- this is what made
+            # motif_landscape take up to two hours on some isolates.
+            lo = pos - motif_len + 1
+            i = bisect.bisect_left(starts, lo)
+            if i < len(starts) and starts[i] <= pos:
+                return starts[i]
             return None
 
         # bedMethyl: 0 chrom,1 start,3 mod_code,9 Nvalid_cov,10 pct,11 Nmod
@@ -209,12 +222,13 @@ task motif_landscape {
         results = []
         for motif, code in motifs:
             per_contig = windows[(motif, code)]
+            motif_len = len(motif)
             sites = by_code.get(code, [])
             in_pct, bg_pct = [], []
             in_mod = in_cov = bg_mod = bg_cov = 0
             occ_rep = {}  # (contig, window_start) -> max pct seen in that window
             for contig, pos, pct, nmod, cov in sites:
-                w = in_any_window(contig, pos, per_contig)
+                w = in_any_window(contig, pos, per_contig, motif_len)
                 if w is not None:
                     in_pct.append(pct); in_mod += nmod; in_cov += cov
                     key = (contig, w)
