@@ -1,0 +1,18 @@
+{
+  "__comment": "Tiny synthetic 8-sample smoke test, committed to the repo (unlike pyseer_gwas_inputs.json's real-data template) - exercises kinship, association, lineage effects, and covariate scanning end to end via miniwdl, without asserting anything about the (meaningless) synthetic p-values themselves.",
+
+  "pyseer_gwas.phylogeny_newick": "tests/fixtures/pyseer_gwas/smoke_tree.nwk",
+  "pyseer_gwas.presence_absence_rtab": "tests/fixtures/pyseer_gwas/smoke_presence_absence.Rtab",
+  "pyseer_gwas.phenotype_tsv": "tests/fixtures/pyseer_gwas/smoke_phenotype.tsv",
+
+  "__comment_covariates": "RST+OspC exercises a multi-column combination in one pyseer run, not just single columns. MLST is deliberately excluded here - on this 8-sample panel it alone already halves the survivable variants (see README), so it would make this fixture's covariate_scan_results non-representative rather than testing anything new about our own WDL logic.",
+  "pyseer_gwas.covariates_file": "tests/fixtures/pyseer_gwas/smoke_covariates.tsv",
+  "pyseer_gwas.covariate_combinations": ["RST", "BAPS", "RST+OspC"],
+
+  "pyseer_gwas.run_lineage_effects": true,
+  "pyseer_gwas.lineage_clusters": "tests/fixtures/pyseer_gwas/smoke_baps_clusters.tsv",
+
+  "pyseer_gwas.annotation_table": "tests/fixtures/pyseer_gwas/smoke_annotation.csv",
+
+  "pyseer_gwas.docker": "aarvani1/pyseer:1.4.2@sha256:20ba84511a4a7ebca154292b8a2af5e873556dbacd27999c5045c76f4f71d10c"
+}

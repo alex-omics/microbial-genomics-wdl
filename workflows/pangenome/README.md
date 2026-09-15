@@ -2,9 +2,10 @@
 
 Bakta + Panaroo across a panel of assemblies, and stops there. **No alignment, no tree.**
 
-**Status: 🚧 in development.** Validated against `miniwdl check` and shares its Bakta and
-Panaroo tasks with `dna_methylation_calling`, which has been run through real Docker
-execution — but this workflow itself has not yet run end to end on real data.
+**Status: 🚧 in development.** Validated against `miniwdl check`, and its Bakta and
+Panaroo tasks are proven on real data — `dna_methylation_calling`'s Panaroo call has run
+successfully on a real 14-isolate panel on Terra — but this workflow itself, as its own
+Terra entry point, has not yet run end to end.
 
 ## Why it stops where it does
 

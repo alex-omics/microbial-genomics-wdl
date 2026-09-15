@@ -5,9 +5,11 @@ built for characterizing the methylome landscape across a diverse panel of clini
 isolates — not for confirming any one gene's activity. (Named explicitly `dna_` because
 "methylation" alone is ambiguous — this is not histone or RNA methylation.)
 
-**Status: 🚧 in development.** Every stage has been validated against synthetic
-ground-truth fixtures and real Docker execution, but the pipeline has not yet run on a
-real ONT BAM or a real assembly end to end.
+**Status: ✅ available.** Every stage is validated against synthetic ground-truth
+fixtures, and the full workflow has run end to end on Terra against a real 14-isolate
+*P. aeruginosa* panel (self-mapping 99.9–100%, biologically plausible motif/RM-system
+diversity across isolates), producing correct per-isolate BEDs/annotated tables and the
+cross-isolate ortholog matrix.
 
 ## Design
 

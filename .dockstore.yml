@@ -2,11 +2,11 @@ version: 1.2
 
 # Dockstore registration for microbial-genomics-wdl.
 #
-# Both workflows are listed here even though each currently lives on its own
+# All workflows are listed here even though each currently lives on its own
 # feature branch. The `filters.branches` list is per-workflow, so Dockstore only
 # looks for a descriptor on branches where it actually exists — registering
-# assembly_qc does not make Dockstore go hunting for the GWAS descriptor on the
-# assembly-qc branch, and vice versa.
+# assembly_qc does not make Dockstore go hunting for another workflow's
+# descriptor on the assembly-qc branch, and vice versa.
 #
 # Keeping one identical file on every branch also means this does not conflict
 # when the feature branches eventually merge into main.
@@ -29,6 +29,20 @@ workflows:
         - main
         - feature/assembly-qc-tasks
 
+  - name: fetch_reads_from_sra
+    subclass: WDL
+    primaryDescriptorPath: /workflows/fetch_reads_from_sra/fetch_reads_from_sra.wdl
+    readMePath: /workflows/fetch_reads_from_sra/README.md
+    testParameterFiles:
+      - /tests/fetch_reads_from_sra_inputs.json
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/fetch-reads-from-sra
+
   - name: multimodal_gwas
     subclass: WDL
     primaryDescriptorPath: /workflows/multimodal_gwas/wf_multimodal_gwas.wdl
@@ -42,6 +56,20 @@ workflows:
       branches:
         - main
         - feature/multimodal-gwas
+
+  - name: pyseer_gwas
+    subclass: WDL
+    primaryDescriptorPath: /workflows/pyseer_gwas/pyseer_gwas.wdl
+    readMePath: /workflows/pyseer_gwas/README.md
+    testParameterFiles:
+      - /tests/pyseer_gwas_inputs.json
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/pyseer-gwas
 
   - name: dna_methylation_calling
     subclass: WDL
