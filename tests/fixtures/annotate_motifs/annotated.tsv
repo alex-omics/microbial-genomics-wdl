@@ -1,0 +1,3 @@
+sample	chrom	start	end	site_strand	mod_code	n_valid_cov	percent_modified	locus_tag	gene	feature_strand	region_length	product	region
+test1	NC_TEST	11	12	+	a	40	92.50	TEST_00001	geneA	+	500	test product	genic
+test1	NC_TEST	30	31	+	a	40	92.50	TEST_00001	geneA	+	500	test product	genic

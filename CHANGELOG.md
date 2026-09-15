@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- `tasks/annotate_motifs.wdl` (`annotate_motif_membership`) - Adds a `motif` column to `annotate_methylation`'s per-site table: which of an isolate's candidate motifs (de novo + REBASE), if any, each methylated site falls inside. The single per-isolate deliverable combining gene/product/region annotation, promoter windows, and motif context alongside the methylation call, one row per site — new `dna_methylation_calling` output `annotated_tables_with_motifs`
 - `workflows/dna_methylation_calling/dna_methylation_calling.wdl` - Per-isolate bacterial methylation calling from ONT modified-basecalled BAMs. Each isolate's reads are mapped to its OWN assembly rather than a shared reference — no single reference captures the accessory genome of an organism this prone to rearrangement, and de novo motif discovery specifically requires it, since motif context is read from whatever the reads were aligned to. Validated end to end on a real 14-isolate *P. aeruginosa* panel on Terra
 - `tasks/align_modbam.wdl` - `samtools fastq -T MM,ML,MN | minimap2 -y`, with MM-tag presence checked before and after alignment; losing the tags produces an empty pileup with no error otherwise
 - `tasks/modkit.wdl` - `modkit_pileup` (bedMethyl split by 6mA/4mC/5mC) and `modkit_find_motifs` (de novo motif discovery)
@@ -26,6 +27,7 @@
 ### Changed
 - `workflows/pyseer_gwas/pyseer_gwas.wdl` - Dropped the separate `annotate_significant` call; `gene_significant` is a row subset of `gene_results` with identical columns, so annotating it separately was redundant - filter `gene_results_annotated` instead. Added an equivalent annotation join for the `covariate_combinations` scan's long-format table (`covariate_scan_combined` -> `covariate_scan_combined_annotated`/`_readable`), which had never been joined against the Panaroo annotation table before
 - `tasks/modkit.wdl` - `modkit_find_motifs` moved off `preemptible` (1 → 0) and its default `cpu` raised 8 → 32. The task can run over an hour on a deeply-covered genome with no checkpointing, so a mid-run preemption forced a full restart; modkit's own docs describe the search as heavily parallel and use `--threads 32` in their own example. Both observed directly: pre-fix runs saw repeated multi-hour preemption/restart cycles on the real 14-isolate panel, and post-fix runs completed every shard on the first attempt
+- `tasks/motif_landscape_summary.wdl` - Gene-level ranking now breaks CV ties on mean density instead of leaving them in dict-iteration order. CV is scale-invariant, so on the real panel 252 unrelated genes tied at an identical CV purely because they shared the same "signal in exactly 1 of 14 isolates" shape, regardless of how large that signal actually was — the ranking wasn't wrong, just not doing real triage inside those ties
 
 ### Fixed
 - `tasks/annotate_methylation.wdl` - Was filtering on coverage only, so every evaluated base reached the output table; the ortholog matrix built on top of it was effectively reporting gene length rather than methylation. Now filters on coverage, percent-modified, and modified-read count together

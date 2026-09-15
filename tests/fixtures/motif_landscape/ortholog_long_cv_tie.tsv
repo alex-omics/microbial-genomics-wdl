@@ -1,0 +1,5 @@
+ortholog_group	gene_name	annotation	n_isolates_with_gene	sample	locus_tags	n_genic_sites	n_upstream_sites	n_6mA	n_4mC	n_5mC	mean_percent_modified	genic_length	upstream_length	genic_sites_per_kb
+group_Y	lowmean	tied CV, low magnitude, listed first	2	iso1	Y_00001	1	0	1	0	0	95.00	500	NA	2.000
+group_Y	lowmean	tied CV, low magnitude, listed first	2	iso2	Y_00002	0	0	0	0	0	NA	NA	NA	0.000
+group_X	highmean	tied CV, high magnitude, listed second	2	iso1	X_00001	5	0	5	0	0	95.00	500	NA	10.000
+group_X	highmean	tied CV, high magnitude, listed second	2	iso2	X_00002	0	0	0	0	0	NA	NA	NA	0.000
