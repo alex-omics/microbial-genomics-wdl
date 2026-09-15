@@ -1,0 +1,5 @@
+sample	chrom	start	end	site_strand	mod_code	n_valid_cov	percent_modified	locus_tag	gene	feature_strand	region_length	product	region
+isoA	NC_TEST	500	501	+	a	40	92.50	A_00001	mexA	+	1000	efflux pump	genic
+isoA	NC_TEST	600	601	-	a	40	88.00	A_00001	mexA	+	1000	efflux pump	genic
+isoA	NC_TEST	900	901	+	21839	30	70.00	A_00003	gyrB	-	500	gyrase	genic
+isoA	NC_TEST	50	51	+	a	20	60.00	A_99999	NA	+	200	orphan	genic

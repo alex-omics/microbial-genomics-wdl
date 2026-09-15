@@ -1,0 +1,4 @@
+Gene,Non-unique Gene name,Annotation,isoA,isoB
+group_A,mexA,"efflux pump, RND family",A_00001,B_00001
+group_B,,"acquired methyltransferase, type II",,B_00002
+group_C,gyrB,DNA gyrase subunit B,A_00003;A_00004,B_00003

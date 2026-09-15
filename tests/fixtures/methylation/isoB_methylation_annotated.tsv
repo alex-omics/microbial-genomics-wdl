@@ -1,0 +1,2 @@
+sample	chrom	start	end	site_strand	mod_code	n_valid_cov	percent_modified	locus_tag	gene	feature_strand	region_length	product	region
+isoB	NC_TEST	300	301	+	a	50	99.00	B_00002	NA	+	300	MTase	upstream

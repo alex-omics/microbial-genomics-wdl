@@ -1,0 +1,4 @@
+Enzyme	EnzymeUniqueMethylationActivity	Motif	MethylationType	Strand	Position
+M.EcoDam	M.EcoDam_A1	GATC	6mA	+	1
+M.NoMotifKnown	M.NoMotifKnown_X	?	5mC	+	?
+M.MultiMotif	M.MultiMotif_A1	GGCC,GCNGC	5mC	+	1

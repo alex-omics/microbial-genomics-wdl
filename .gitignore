@@ -29,6 +29,10 @@ __pycache__/
 *.fq.gz
 *.bam
 *.bai
+
+# Deliberate exception: a tiny (~6 KB), hand-built regression fixture, not
+# real sequencing data — needed to test align_modbam's length-filter logic.
+!tests/fixtures/align_modbam/minireads.fastq
 *.cram
 *.vcf
 *.vcf.gz
