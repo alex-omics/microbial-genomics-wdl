@@ -1,0 +1,8 @@
+Gene,Non-unique Gene name,Annotation,IsoA,IsoB
+group_core1,,"hypothetical protein, core1 family",IsoA_00001,IsoB_00001
+group_core2,,"hypothetical protein, core2 family",IsoA_00002,IsoB_00002
+group_core3,,"hypothetical protein, core3 family",IsoA_00003,IsoB_00003
+group_onlyA,,"hypothetical protein, onlyA family",IsoA_00004,
+group_para,,"hypothetical protein, para family",IsoA_00005;IsoA_00006,
+group_onlyB,,"hypothetical protein, onlyB family",,IsoB_00004
+group_silent,,"hypothetical protein, silent family",,IsoB_00005

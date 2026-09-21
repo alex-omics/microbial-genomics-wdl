@@ -43,6 +43,18 @@ workflows:
         - main
         - feature/fetch-reads-from-sra
 
+  - name: rna_seq_counts
+    subclass: WDL
+    primaryDescriptorPath: /workflows/rna_seq_counts/rna_seq_counts.wdl
+    readMePath: /workflows/rna_seq_counts/README.md
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/rna-seq-counts
+
   - name: multimodal_gwas
     subclass: WDL
     primaryDescriptorPath: /workflows/multimodal_gwas/wf_multimodal_gwas.wdl

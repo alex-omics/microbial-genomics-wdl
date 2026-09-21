@@ -5,6 +5,7 @@ task panaroo {
     input {
         Array[File]  gff3s
         Array[File]  fnas
+        Array[String]? sample_names
         String       clean_mode           = "strict"
         Float        core_threshold       = 0.95
         Float        seq_id               = 0.95
@@ -24,6 +25,7 @@ task panaroo {
     parameter_meta {
         gff3s:                "Per-isolate Bakta GFF3s. Panaroo needs each GFF to carry its own sequence; if the ##FASTA block is absent it is appended from the matching entry in fnas."
         fnas:                 "Per-isolate assembly FASTAs from Bakta, positionally matched to gff3s"
+        sample_names:         "Optional isolate names, positionally matched to gff3s. Panaroo labels each isolate's column in gene_presence_absence.csv after its GFF filename, so a GFF supplied under an arbitrary name would produce a column that no downstream step can find. Supplying names makes the label independent of the filename. Omitted, the filename (minus .gff3) is used, which is what Bakta's own output already gives."
         clean_mode:           "Panaroo's error-correction aggressiveness: strict, moderate, or sensitive. Complete ONT assemblies justify 'strict'; loosen it only for fragmented or contaminated input (default = strict)"
         core_threshold:       "Fraction of isolates a gene must appear in to count as core (default = 0.95)"
         seq_id:               "Sequence identity threshold for initial clustering, panaroo -c (default = 0.95)"
@@ -50,6 +52,12 @@ task panaroo {
         mkdir -p gffs
         GFFS=(~{sep=' ' gff3s})
         FNAS=(~{sep=' ' fnas})
+        NAMES=(~{sep=' ' select_first([sample_names, []])})
+
+        if [ "${#NAMES[@]}" -ne 0 ] && [ "${#NAMES[@]}" -ne "${#GFFS[@]}" ]; then
+            echo "ERROR: ${#GFFS[@]} GFFs but ${#NAMES[@]} sample_names; these must be matched." >&2
+            exit 1
+        fi
 
         if [ "${#GFFS[@]}" -ne "${#FNAS[@]}" ]; then
             echo "ERROR: ${#GFFS[@]} GFFs but ${#FNAS[@]} FASTAs; these must be matched." >&2
@@ -63,7 +71,11 @@ task panaroo {
         for i in "${!GFFS[@]}"; do
             g="${GFFS[$i]}"
             f="${FNAS[$i]}"
-            base="$(basename "${g}" .gff3)"
+            if [ "${#NAMES[@]}" -ne 0 ]; then
+                base="${NAMES[$i]}"
+            else
+                base="$(basename "${g}" .gff3)"
+            fi
             if grep -q '^##FASTA' "${g}"; then
                 cp "${g}" "gffs/${base}.gff"
             else

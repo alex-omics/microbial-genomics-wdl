@@ -12,7 +12,7 @@ WDL workflows for studying the genomes of bacterial and other microbial pathogen
 | [pangenome](workflows/pangenome) | Bakta + Panaroo across a panel of assemblies — pangenome construction only, deliberately no alignment or tree | 🚧 In development |
 | polish_assembly | Uses short reads to improve a long-read assembly | 🚧 In development |
 | [pyseer_gwas](workflows/pyseer_gwas) | Standalone pyseer LMM/LRT association over a gene or pangenome-module Rtab, with lineage effects and deliberate covariate-combination scanning | ✅ Available |
-| rna_seq_counts | Align trimmed reads using a specified aligner to a reference, and count read pileup | 🔜 Planned |
+| [rna_seq_counts](workflows/rna_seq_counts) | BWA-MEM alignment and featureCounts of paired-end RNA-seq, each sample aligned to its own isolate's assembly (replicates matched to their parent by name). Runs Bakta and Panaroo itself to put isolates on shared ortholog groups, giving one cross-isolate matrix; each step is skipped if you supply its output. Also runs against a single shared reference | 🚧 In development |
 
 ## Repository Structure
 ```
