@@ -98,12 +98,11 @@ tiers are descriptive and need no phenotype data.
 ## Running
 
 ```bash
-miniwdl run workflows/dna_methylation_calling/dna_methylation_calling.wdl -i tests/dna_methylation_calling_inputs.json
+miniwdl run workflows/dna_methylation_calling/dna_methylation_calling.wdl -i inputs.json
 ```
 
-`tests/dna_methylation_calling_inputs.json` is a placeholder for Dockstore's
-`testParameterFiles`, not a runnable local test (no small public ONT modBAM + assembly
-fixture is checked in). Fill in real paths, or set inputs in the Terra console.
+where `inputs.json` sets at least `modbams` and `assemblies`, or set the inputs in the Terra
+console.
 
 `tests/run_unit_tests.sh` holds the regression suite: task-level fixture tests against
 planted ground truth, run through the real WDL tasks via `miniwdl run`.

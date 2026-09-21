@@ -37,8 +37,8 @@ which is what an ortholog join needs, does not require it.
 ## Running
 
 ```bash
-miniwdl run workflows/pangenome/pangenome.wdl -i tests/pangenome_inputs.json
+miniwdl run workflows/pangenome/pangenome.wdl -i inputs.json
 ```
 
-`tests/pangenome_inputs.json` is a placeholder for Dockstore's `testParameterFiles`, not a
-runnable local test. Fill in real assembly paths, or set inputs in the Terra console.
+where `inputs.json` sets `pangenome.assemblies` (and optionally `pangenome.sample_names`),
+or set the inputs in the Terra console.
