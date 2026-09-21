@@ -26,6 +26,9 @@
 - `tasks/modkit.wdl` - `modkit_find_motifs` is no longer preemptible, and defaults to 32 CPUs
 - `tasks/motif_landscape_summary.wdl` - Gene-level ranking breaks CV ties on mean density
 
+### Removed
+- `tests/` - Placeholder and workspace-specific input files, and the live-network `fetch_reads_from_sra` tests
+
 ### Fixed
 - `rna_seq_counts` - `-p` without `--countReadPairs` counted each mate separately, doubling every fragment. The pinned images for alignment, duplicate marking and counting could not run (`staphb/bwa` has no samtools; `staphb/picard` and `biocontainers/subread` do not exist on Docker Hub). `ignore_duplicates` now defaults to `false`
 - `tasks/annotate_methylation.wdl` - Sites were filtered on coverage only; now on coverage, percent-modified and modified-read count. Also fixed a column offset that put the feature end coordinate in `feature_strand`

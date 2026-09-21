@@ -13,8 +13,6 @@ workflows:
     subclass: WDL
     primaryDescriptorPath: /workflows/assembly_qc/assembly_qc.wdl
     readMePath: /workflows/assembly_qc/README.md
-    testParameterFiles:
-      - /tests/assembly_qc_terra_inputs.json
     authors:
       - name: Alex Arvanitis
         email: aarvanitis1@mgh.harvard.edu
@@ -53,8 +51,6 @@ workflows:
     subclass: WDL
     primaryDescriptorPath: /workflows/multimodal_gwas/wf_multimodal_gwas.wdl
     readMePath: /docs/workflows/multimodal_gwas.md
-    testParameterFiles:
-      - /tests/multimodal_gwas/tier1_smoke_test.inputs.json
     authors:
       - name: Alex Arvanitis
         email: aarvanitis1@mgh.harvard.edu
@@ -81,8 +77,6 @@ workflows:
     subclass: WDL
     primaryDescriptorPath: /workflows/dna_methylation_calling/dna_methylation_calling.wdl
     readMePath: /workflows/dna_methylation_calling/README.md
-    testParameterFiles:
-      - /tests/dna_methylation_calling_inputs.json
     authors:
       - name: Alex Arvanitis
         email: aarvanitis1@mgh.harvard.edu
@@ -95,8 +89,6 @@ workflows:
     subclass: WDL
     primaryDescriptorPath: /workflows/pangenome/pangenome.wdl
     readMePath: /workflows/pangenome/README.md
-    testParameterFiles:
-      - /tests/pangenome_inputs.json
     authors:
       - name: Alex Arvanitis
         email: aarvanitis1@mgh.harvard.edu

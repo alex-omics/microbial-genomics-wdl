@@ -1,5 +1,5 @@
 {
-  "__comment": "LOCAL smoke-test inputs, for miniwdl/Cromwell on your own machine. For a Terra run use assembly_qc_terra_inputs.json instead — miniwdl cannot read gs:// URIs.",
+  "__comment": "LOCAL smoke-test inputs, for miniwdl/Cromwell on your own machine. For a Terra run, use gs:// paths instead — miniwdl cannot read them, and Cromwell on Terra cannot read local paths.",
 
   "__comment_assemblies": "These FASTAs are not committed (sequence files are gitignored, and they are large). Fetch them before running: B. burgdorferi B31 (GCF_000008685.2) and E. coli K-12 MG1655 (GCF_000005845.2) from NCBI.",
   "assembly_qc.assemblies": [

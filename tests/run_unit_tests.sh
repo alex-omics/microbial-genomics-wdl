@@ -2,31 +2,20 @@
 #
 # Fixture tests for this repo's workflows.
 #
-# These run the REAL WDL tasks via miniwdl rather than a copy of their logic,
-# so the tests cannot drift away from what the workflows actually execute.
+# These run the real WDL tasks and workflows through miniwdl rather than a copy of
+# their logic, so the tests cannot drift from what actually executes. Fixtures
+# hold planted ground truth, so results are asserted exactly rather than eyeballed.
 #
-# Methylation tasks: both bugs these cover were caught by hand and produced
-# plausible-looking wrong numbers rather than errors:
-#   - a bedtools column off-by-one that wrote the feature end coordinate into
-#     the feature_strand column
-#   - a missing percent-modified filter that let every evaluated base through,
-#     turning the ortholog matrix into a proxy for gene length
+# Sections:
+#   - methylation tasks: annotation floors and column layout, ortholog join,
+#     REBASE search, motif landscape statistics
+#   - pyseer_gwas: the annotation join, and the whole workflow end to end against
+#     the real pyseer image
+#   - rna_seq_counts: sample-to-assembly matching, and the whole workflow on
+#     synthetic isolates with planted per-gene counts
 #
-# pyseer_gwas / fetch_reads_from_sra: pyseer_annotate_results is the one part
-# of pyseer_gwas that isn't just a thin wrapper around pyseer itself, so it's
-# the part most likely to produce a plausible-looking wrong answer rather than
-# an error: a silently dropped unmatched variant, a p-value that rounds to
-# 0.000000, or a comma inside a free-text annotation shifting every column
-# after it. The pyseer_gwas section runs the whole workflow end to end against
-# the real pyseer image, which is what actually catches wiring bugs between
-# tasks - see the comment there. The fetch_reads_from_sra section runs
-# fasterq_dump against real, tiny public accessions to prove paired-end and
-# single-end layout detection both work against the actual tool, not a mocked
-# one - see the comment there for why single-end coverage specifically
-# matters.
-#
-# Requires: miniwdl, docker, python3. The fetch_reads_from_sra section also
-# needs outbound network access (NCBI SRA + ENA).
+# Requires: miniwdl, docker, python3. All sections run offline once the images
+# are pulled.
 # Usage: tests/run_unit_tests.sh
 
 set -euo pipefail
@@ -422,49 +411,6 @@ check "readable: variant absent from smoke_annotation.csv is 'no match'" \
 check "covariate_scan_combined_annotated: gene_name/annotation joined without disturbing the covariates column" \
     "variant	gene_name	annotation	covariates	af	filter-pvalue	lrt-pvalue	beta	beta-std-err	variant_h2	notes" \
     "$(head -1 "${SMOKE_COVSCAN_ANNOTATED}")"
-
-# --------------------------------------------------------------------------
-echo "fetch_reads_from_sra (fasterq_dump, real sra-tools, paired-end)"
-# DRR727328 is a real, tiny (~25 KB gzipped) paired-end Illumina WGS run for
-# Lacticaseibacillus rhamnosus GG. Confirms the common case still works
-# exactly as before: both _1/_2 produced, layout detected from the actual
-# files (not from SRA/ENA metadata, which can be stale), platform looked up.
-miniwdl run "${REPO}/tasks/sra_tools.wdl" --task fasterq_dump \
-    accession=DRR727328 \
-    disk_gb=20 \
-    --dir "${WORK}/sra_pe" --verbose > "${WORK}/sra_pe.log" 2>&1 || {
-        echo "  task failed; see ${WORK}/sra_pe.log"; sed -n '$p' "${WORK}/sra_pe.log"; exit 1; }
-
-check "paired: layout" "paired" \
-    "$(find "${WORK}/sra_pe" -name LAYOUT -exec cat {} \;)"
-check "paired: read1 produced and non-empty" "1" \
-    "$(find "${WORK}/sra_pe" -path '*out/read1*' -name '*.fastq.gz' -size +0 | wc -l | tr -d ' ')"
-check "paired: read2 produced and non-empty" "1" \
-    "$(find "${WORK}/sra_pe" -path '*out/read2*' -name '*.fastq.gz' -size +0 | wc -l | tr -d ' ')"
-check "paired: platform" "ILLUMINA" \
-    "$(find "${WORK}/sra_pe" -name PLATFORM -exec cat {} \;)"
-
-# --------------------------------------------------------------------------
-echo "fetch_reads_from_sra (fasterq_dump, real sra-tools, single-end)"
-# DRR572312 is a real, tiny (~19 KB) single-end ONT run for E. coli. This is
-# the regression test for the bug that motivated porting this workflow in:
-# the original script hardcoded gzip on _1/_2, which does not exist for a
-# single-end run, and would have failed outright here. read2 must NOT be
-# produced (not even empty) - it's an unset optional output, not a file.
-miniwdl run "${REPO}/tasks/sra_tools.wdl" --task fasterq_dump \
-    accession=DRR572312 \
-    disk_gb=20 \
-    --dir "${WORK}/sra_se" --verbose > "${WORK}/sra_se.log" 2>&1 || {
-        echo "  task failed; see ${WORK}/sra_se.log"; sed -n '$p' "${WORK}/sra_se.log"; exit 1; }
-
-check "single: layout" "single" \
-    "$(find "${WORK}/sra_se" -name LAYOUT -exec cat {} \;)"
-check "single: read1 produced and non-empty" "1" \
-    "$(find "${WORK}/sra_se" -path '*out/read1*' -name '*.fastq.gz' -size +0 | wc -l | tr -d ' ')"
-check "single: read2 is not produced" "0" \
-    "$(find "${WORK}/sra_se" -path '*out/read2*' -name '*.fastq.gz' | wc -l | tr -d ' ')"
-check "single: platform" "OXFORD_NANOPORE" \
-    "$(find "${WORK}/sra_se" -name PLATFORM -exec cat {} \;)"
 
 # --------------------------------------------------------------------------
 echo "rna_seq_counts: sample -> assembly matching (real sample names)"
