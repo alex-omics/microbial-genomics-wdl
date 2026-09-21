@@ -93,6 +93,7 @@ the panel. All three tiers are descriptive — none require MICs or phenotype gr
 | `methylation_long` | Every isolate's annotated methylation sites concatenated, nucleotide-resolution. |
 | `bedmethyl_gz`, `bed_6ma`, `bed_4mc`, `bed_5mc` | Unfiltered per-isolate pileups, split by modification type — the re-thresholding fallback if the built-in filters are too strict or loose. |
 | `annotated_tables` | Per-isolate: one row per methylated site, with `locus_tag`/`gene`/`product`/`region` (genic vs. upstream). |
+| `annotated_tables_with_motifs` | The single per-isolate combined file: `annotated_tables` plus a `motif` column — which of this isolate's candidate motifs (de novo + REBASE), if any, that site falls inside. Gene/product/promoter-region annotation and motif context alongside the actual methylation call, one row per site. |
 | `ortholog_matrix`, `ortholog_long` | Gene × isolate methylation, gene absence held as `NA`, distinct from `0` (present, unmethylated). |
 | `rebase_mtases` | Per-isolate candidate MTase inventory: homologous gene, predicted motif, modification type. |
 | `motif_landscapes` | Per-isolate tier 1 + 2 statistics, one row per motif tested. |

@@ -181,6 +181,27 @@ check "REBASE-only motif also present" "1" \
 check "row count matches expected dedup" "2" "$(awk 'NR>1' "${LIST}" | wc -l | tr -d ' ')"
 
 # --------------------------------------------------------------------------
+echo "annotate_motif_membership"
+# One planted GATC at 0-based position 10-13; a site sitting on the A (start=11)
+# must be tagged with the motif, a site elsewhere on the same all-A background
+# must come back NA rather than a false hit.
+AM_FIX="${REPO}/tests/fixtures/annotate_motifs"
+miniwdl run "${REPO}/tasks/annotate_motifs.wdl" \
+    annotated_tsv="${AM_FIX}/annotated.tsv" \
+    motif_list="${AM_FIX}/motif_list.tsv" \
+    sample_name=test1 \
+    reference_fasta="${AM_FIX}/reference.fa" \
+    --dir "${WORK}/annotate_motifs" --verbose > "${WORK}/annotate_motifs.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/annotate_motifs.log"; sed -n '$p' "${WORK}/annotate_motifs.log"; exit 1; }
+AM_OUT="$(find "${WORK}/annotate_motifs" -path '*/out/*' -name '*_methylation_annotated_with_motifs.tsv' | head -1)"
+check "site inside the planted motif window is tagged" "GATC" \
+    "$(awk -F'\t' 'NR==2{print $15}' "${AM_OUT}")"
+check "site outside any motif window comes back NA" "NA" \
+    "$(awk -F'\t' 'NR==3{print $15}' "${AM_OUT}")"
+check "original columns pass through untouched" "TEST_00001	geneA	genic" \
+    "$(awk -F'\t' 'NR==2{print $9"\t"$10"\t"$14}' "${AM_OUT}")"
+
+# --------------------------------------------------------------------------
 echo "motif_landscape (tier 1 + tier 2, against ground-truth planted signal)"
 # iso1.bedmethyl.bed plants 6mA at every genomic GATC copy but makes a third
 # of those copies unmethylated (phase-variation-like); iso2 plants the same
@@ -241,6 +262,19 @@ python3 "${WORK}/summarise.py" \
     /dev/null "${WORK}/by_gene_conflict.tsv"
 check "highlighted gene sorts first even with lower CV" "group_A" \
     "$(awk -F'\t' 'NR==2{print $1}' "${WORK}/by_gene_conflict.tsv")"
+
+# CV is scale-invariant, so two genes with the same "1 of 2 isolates nonzero"
+# shape tie exactly on CV regardless of how large that one nonzero value is.
+# group_X (density 10.0) and group_Y (density 2.0) both land on CV=1.000;
+# group_Y is listed first in the fixture, so a CV-only sort would put it
+# first too -- the tiebreak on mean density must put group_X first instead.
+python3 "${WORK}/summarise.py" \
+    "${MOTIF_FIX}/iso1_landscape.tsv,${MOTIF_FIX}/iso2_landscape.tsv" \
+    "${MOTIF_FIX}/ortholog_long_cv_tie.tsv" \
+    "" \
+    /dev/null "${WORK}/by_gene_cv_tie.tsv"
+check "CV tie breaks on mean density, not file order" "group_X" \
+    "$(awk -F'\t' 'NR==2{print $1}' "${WORK}/by_gene_cv_tie.tsv")"
 
 # --------------------------------------------------------------------------
 echo "align_modbam length filter"
