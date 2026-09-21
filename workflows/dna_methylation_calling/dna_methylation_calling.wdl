@@ -9,6 +9,7 @@ import "../../tasks/methylation_orthologs.wdl" as ortholog_task
 import "../../tasks/rebase_mtase_search.wdl" as rebase_task
 import "../../tasks/motif_landscape.wdl" as landscape_task
 import "../../tasks/motif_landscape_summary.wdl" as landscape_summary_task
+import "../../tasks/annotate_motifs.wdl" as annotate_motifs_task
 import "../../tasks/utils.wdl" as utils
 
 workflow dna_methylation_calling {
@@ -261,6 +262,20 @@ workflow dna_methylation_calling {
             }
         }
 
+        # The single per-isolate deliverable: gene/product/region annotation,
+        # promoter windows, and motif context alongside each methylation call,
+        # in one row per site. Needs both annotate_methylation (run_bakta) and
+        # this isolate's candidate motif list (run_motif_landscape).
+        if (run_bakta && run_motif_landscape) {
+            call annotate_motifs_task.annotate_motif_membership {
+                input:
+                    annotated_tsv   = select_first([annotate_methylation.annotated_tsv]),
+                    motif_list      = select_first([build_motif_list.motif_list]),
+                    sample_name     = resolved_name,
+                    reference_fasta = assemblies[i]
+            }
+        }
+
         Array[String] summary_row = [
             resolved_name,
             "~{align_modbam.n_reads_raw}",
@@ -389,5 +404,10 @@ workflow dna_methylation_calling {
         Array[File?] bakta_faa           = resolved_faa
         Array[File?] bakta_tsv           = bakta.annotation_tsv
         Array[File?] annotated_tables    = annotate_methylation.annotated_tsv
+
+        # annotate_methylation's table plus a motif column: the single
+        # per-isolate file combining gene/product/region annotation, promoter
+        # windows, and motif context alongside each methylation call.
+        Array[File?] annotated_tables_with_motifs = annotate_motif_membership.combined_tsv
     }
 }

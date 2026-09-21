@@ -95,9 +95,15 @@ task motif_landscape_summary {
             gene_rows.append([g, gene, ann, n_with, len(vals),
                                "%.3f" % mean, "%.3f" % cv, "yes" if flagged else ""])
 
-        # Highlighted genes surface first regardless of CV, since they are the
-        # ones the panel exists to characterise; CV breaks ties within each group.
-        gene_rows.sort(key=lambda r: (r[7] != "yes", -float(r[6])))
+        # Highlighted genes surface first regardless of CV, then CV, then mean
+        # density. CV alone ties constantly on sparse data: it's scale-invariant,
+        # so any gene where the same handful of isolates out of the panel carry
+        # a nonzero value gets an identical CV regardless of how large that value
+        # actually is -- e.g. a gene spiking in 1/14 isolates ties with every
+        # other gene that also spikes in exactly 1/14, no matter the magnitude.
+        # Breaking those ties by mean density at least orders them by how much
+        # signal is actually there, rather than by dict-iteration order.
+        gene_rows.sort(key=lambda r: (r[7] != "yes", -float(r[6]), -float(r[5])))
 
         with open(gene_out, "w", newline="") as out:
             w = csv.writer(out, delimiter="\t", lineterminator="\n")
