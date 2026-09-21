@@ -467,6 +467,309 @@ check "single: platform" "OXFORD_NANOPORE" \
     "$(find "${WORK}/sra_se" -name PLATFORM -exec cat {} \;)"
 
 # --------------------------------------------------------------------------
+echo "rna_seq_counts: sample -> assembly matching (real sample names)"
+# psarna_sample_ids.txt is the real 81-sample demux sheet. The reference names
+# are a stand-in: each isolate's letter replicate stripped, with PSA_26a/b/c and
+# PSA_13-2 kept as isolates in their own right, which is the awkward part of the
+# real naming (one letter is a replicate in PSA_1b, but part of the isolate name
+# in PSA_26a_b). What matters is that these resolve WITHOUT any explicit map.
+RNA="${REPO}/tests/fixtures/rna_seq_counts"
+
+# Writes a task-inputs JSON for match_samples_to_references from two name files.
+match_inputs() {   # samples_file refs_file out.json [extra key=json ...]
+    python3 - "$@" <<'PY'
+import json, sys
+s = [l.strip() for l in open(sys.argv[1]) if l.strip()]
+r = [l.strip() for l in open(sys.argv[2]) if l.strip()]
+d = {"sample_ids": s, "reference_ids": r,
+     "sample_array_lengths": [len(s), len(s)], "reference_array_lengths": [len(r), len(r)]}
+for kv in sys.argv[4:]:
+    k, v = kv.split("=", 1); d[k] = json.loads(v)
+json.dump(d, open(sys.argv[3], "w"))
+PY
+}
+
+# Header-only gene_presence_absence.csv for a list of isolate names: the matcher
+# only checks the header, so this is all the up-front validation needs.
+make_gpa() {   # refs_file out.csv
+    python3 - "$1" "$2" <<'PY'
+import sys
+r = [l.strip() for l in open(sys.argv[1]) if l.strip()]
+open(sys.argv[2], "w").write(",".join(["Gene", "Non-unique Gene name", "Annotation"] + r) + "\n")
+PY
+}
+
+make_gpa "${RNA}/psarna_reference_ids.txt" "${WORK}/gpa_real.csv"
+match_inputs "${RNA}/psarna_sample_ids.txt" "${RNA}/psarna_reference_ids.txt" "${WORK}/match_real.json" \
+    "ortholog_table=\"${WORK}/gpa_real.csv\""
+miniwdl run "${REPO}/tasks/sample_matching.wdl" --task match_samples_to_references \
+    -i "${WORK}/match_real.json" --dir "${WORK}/match_real" > "${WORK}/match_real.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/match_real.log"; tail -n 5 "${WORK}/match_real.log"; exit 1; }
+MAP="$(find "${WORK}/match_real" -name mapping.tsv | head -1)"
+mapped() { awk -F'\t' -v s="$1" '$1==s{print $2}' "${MAP}"; }
+
+check "all 81 real samples resolved"         "81"       "$(awk 'NR>1' "${MAP}" | wc -l | tr -d ' ')"
+check "27 distinct assemblies used"          "27"       "$(awk -F'\t' 'NR>1{print $2}' "${MAP}" | sort -u | wc -l | tr -d ' ')"
+check "PSA_1b -> PSA_1"                      "PSA_1"    "$(mapped PSA_1b)"
+check "PSA_13-2a -> PSA_13-2 (hyphen kept)"  "PSA_13-2" "$(mapped PSA_13-2a)"
+check "PSA_26a_b -> PSA_26a (two letters)"   "PSA_26a"  "$(mapped PSA_26a_b)"
+check "PSA_11a -> PSA_11, never PSA_1"       "PSA_11"   "$(mapped PSA_11a)"
+
+# The failure that would otherwise be silent: an isolate number read as a
+# replicate. With PSA_11 absent, PSA_11a must FAIL, not fall back to PSA_1.
+grep -v '^PSA_11$' "${RNA}/psarna_reference_ids.txt" > "${WORK}/refs_no11.txt"
+make_gpa "${WORK}/refs_no11.txt" "${WORK}/gpa_no11.csv"
+match_inputs "${RNA}/psarna_sample_ids.txt" "${WORK}/refs_no11.txt" "${WORK}/match_no11.json" \
+    "ortholog_table=\"${WORK}/gpa_no11.csv\""
+if miniwdl run "${REPO}/tasks/sample_matching.wdl" --task match_samples_to_references \
+       -i "${WORK}/match_no11.json" --dir "${WORK}/match_no11" > "${WORK}/match_no11.log" 2>&1; then
+    check "missing assembly fails the run" "fail" "succeeded"
+else
+    check "missing assembly fails the run" "fail" "fail"
+fi
+ERRTXT="$(find "${WORK}/match_no11" -name stderr.txt -exec cat {} + 2>/dev/null)"
+check "error names the unmatched sample"     "1" "$(echo "${ERRTXT}" | grep -c 'PSA_11a')"
+
+# Both PSA_1 and PSA_1b exist: exact wins, but it is flagged, since it is the
+# one place a replicate could be misfiled.
+printf 'PSA_1b\nPSA_1c\n' > "${WORK}/s_amb.txt"; printf 'PSA_1\nPSA_1b\n' > "${WORK}/r_amb.txt"
+make_gpa "${WORK}/r_amb.txt" "${WORK}/gpa_amb.csv"
+match_inputs "${WORK}/s_amb.txt" "${WORK}/r_amb.txt" "${WORK}/match_amb.json" \
+    "ortholog_table=\"${WORK}/gpa_amb.csv\""
+miniwdl run "${REPO}/tasks/sample_matching.wdl" --task match_samples_to_references \
+    -i "${WORK}/match_amb.json" --dir "${WORK}/match_amb" > "${WORK}/match_amb.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/match_amb.log"; exit 1; }
+AMB="$(find "${WORK}/match_amb" -name mapping.tsv | head -1)"
+check "exact name wins over a strip"         "PSA_1b"   "$(awk -F'\t' '$1=="PSA_1b"{print $2}' "${AMB}")"
+check "...and the ambiguity is recorded"     "also_strips_to:PSA_1" "$(awk -F'\t' '$1=="PSA_1b"{print $5}' "${AMB}")"
+
+
+# ---- other replicate conventions. The real run uses letters, but the matcher
+# must not be specific to it: numbers, keywords and separators, in any mix.
+cat > "${WORK}/s_var.txt" <<'EOF'
+Iso_1
+Iso_2
+Iso-3
+Iso.4
+Iso_rep5
+Isorep6
+Iso_replicate7
+Iso_replicateA
+IsoreplicateB
+Iso_R1
+Iso-r2
+Iso_bio3
+Iso_tech2
+Iso_a
+Iso-B
+Iso.c
+EOF
+printf 'Iso\n' > "${WORK}/r_var.txt"
+match_inputs "${WORK}/s_var.txt" "${WORK}/r_var.txt" "${WORK}/match_var.json"
+miniwdl run "${REPO}/tasks/sample_matching.wdl" --task match_samples_to_references \
+    -i "${WORK}/match_var.json" --dir "${WORK}/match_var" > "${WORK}/match_var.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/match_var.log"; tail -n 8 "${WORK}/match_var.log"; exit 1; }
+VAR="$(find "${WORK}/match_var" -name mapping.tsv | head -1)"
+check "16 replicate spellings all resolve to Iso"  "16 Iso" \
+      "$(awk -F'\t' 'NR>1 && $2=="Iso"{n++} END{print n" Iso"}' "${VAR}")"
+
+# ...and what must NOT be read as a replicate: bare digits (an isolate number),
+# a bare letter after a letter (else Ecoli would be 'Ecol' + 'i'), two letters,
+# and a sample that simply is not this isolate.
+printf 'Iso12\nIsob\nIsoAB\nIsoX_9_9\n' > "${WORK}/s_neg.txt"
+match_inputs "${WORK}/s_neg.txt" "${WORK}/r_var.txt" "${WORK}/match_neg.json"
+if miniwdl run "${REPO}/tasks/sample_matching.wdl" --task match_samples_to_references \
+       -i "${WORK}/match_neg.json" --dir "${WORK}/match_neg" > "${WORK}/match_neg.log" 2>&1; then
+    check "bare digit / bare letter / two letters are not replicates" "fail" "succeeded"
+else
+    NEGERR="$(find "${WORK}/match_neg" -name stderr.txt -exec cat {} + 2>/dev/null)"
+    check "bare digit / bare letter / two letters are not replicates" "4 of 4" \
+          "$(echo "${NEGERR}" | grep -o '[0-9] of [0-9] samples' | sed 's/ samples//')"
+fi
+
+# ---- ortholog table checks: each must stop the run before any alignment.
+expect_fail() {   # label needle inputs.json name
+    if miniwdl run "${REPO}/tasks/sample_matching.wdl" --task match_samples_to_references \
+           -i "$3" --dir "${WORK}/$4" > "${WORK}/$4.log" 2>&1; then
+        check "$1" "fail" "succeeded"
+    else
+        check "$1" "1" "$(find "${WORK}/$4" -name stderr.txt -exec cat {} + 2>/dev/null | grep -c -- "$2")"
+    fi
+}
+printf 'IsoA_a\nIsoB_1\n' > "${WORK}/s_two.txt"; printf 'IsoA\nIsoB\n' > "${WORK}/r_two.txt"
+
+# Several isolates and no table is fine here: the workflow builds one with Panaroo.
+match_inputs "${WORK}/s_two.txt" "${WORK}/r_two.txt" "${WORK}/o_none.json"
+miniwdl run "${REPO}/tasks/sample_matching.wdl" --task match_samples_to_references \
+    -i "${WORK}/o_none.json" --dir "${WORK}/o_none" > "${WORK}/o_none.log" 2>&1 \
+    && check "several isolates, no table: matcher accepts (workflow builds it)" "ok" "ok" \
+    || check "several isolates, no table: matcher accepts (workflow builds it)" "ok" "failed"
+
+printf 'IsoA\n' > "${WORK}/r_onlyA.txt"; make_gpa "${WORK}/r_onlyA.txt" "${WORK}/gpa_onlyA.csv"
+match_inputs "${WORK}/s_two.txt" "${WORK}/r_two.txt" "${WORK}/o_miss.json" "ortholog_table=\"${WORK}/gpa_onlyA.csv\""
+expect_fail "isolate missing from ortholog table fails"    "IsoB" "${WORK}/o_miss.json" o_miss
+
+printf 'Gene\tIsoA\tIsoB\ngroup_x\tIsoA_00001\tIsoB_00001\n' > "${WORK}/gpa.Rtab"
+match_inputs "${WORK}/s_two.txt" "${WORK}/r_two.txt" "${WORK}/o_rtab.json" "ortholog_table=\"${WORK}/gpa.Rtab\""
+expect_fail "the .Rtab is rejected with a pointer to the .csv" "gene_presence_absence.csv" "${WORK}/o_rtab.json" o_rtab
+
+# One shared reference needs no table (nothing to join).
+printf 'IsoA_a\nIsoA_b\n' > "${WORK}/s_one.txt"; printf 'IsoA\n' > "${WORK}/r_one.txt"
+match_inputs "${WORK}/s_one.txt" "${WORK}/r_one.txt" "${WORK}/o_one.json"
+miniwdl run "${REPO}/tasks/sample_matching.wdl" --task match_samples_to_references \
+    -i "${WORK}/o_one.json" --dir "${WORK}/o_one" > "${WORK}/o_one.log" 2>&1 \
+    && check "single reference runs without a table" "ok" "ok" \
+    || check "single reference runs without a table" "ok" "failed"
+
+# --------------------------------------------------------------------------
+echo "rna_seq_counts (whole workflow, real bwa/picard/subread, planted ground truth)"
+# Two synthetic isolates, three samples (letter and numeric replicates), with
+# exact known fragment counts per gene - see make_fixtures.py. Duplicate marking
+# runs, but counting keeps duplicate-flagged reads (the default): identical
+# fragments arise by chance in a short gene and are not PCR copies, so exact
+# recovery of the planted counts is what pins that default.
+python3 - "${RNA}" "${WORK}/wf_in.json" <<'PY'
+import json, sys
+F = sys.argv[1]
+json.dump({
+  "rna_seq_counts.read1_trimmed": [F + "/%s_R1.fastq.gz" % s for s in ("IsoA_a", "IsoA_b", "IsoB_1")],
+  "rna_seq_counts.read2_trimmed": [F + "/%s_R2.fastq.gz" % s for s in ("IsoA_a", "IsoA_b", "IsoB_1")],
+  "rna_seq_counts.sample_ids": ["IsoA_a", "IsoA_b", "IsoB_1"],
+  "rna_seq_counts.reference_fastas": [F + "/IsoA.fasta", F + "/IsoB.fasta"],
+  "rna_seq_counts.reference_ids": ["IsoA", "IsoB"],
+  "rna_seq_counts.reference_annotations": [F + "/IsoA.gff3", F + "/IsoB.gff3"],
+  "rna_seq_counts.ortholog_table": F + "/gene_presence_absence.csv",
+}, open(sys.argv[2], "w"))
+PY
+miniwdl run "${REPO}/workflows/rna_seq_counts/rna_seq_counts.wdl" -i "${WORK}/wf_in.json" \
+    --dir "${WORK}/rna_wf" > "${WORK}/rna_wf.log" 2>&1 || {
+        echo "  workflow failed; see ${WORK}/rna_wf.log"; grep ' ERROR ' "${WORK}/rna_wf.log" | tail -n 5 | cut -c1-240; exit 1; }
+RUN="$(ls -d "${WORK}"/rna_wf/*_rna_seq_counts | tail -1)"
+
+# Every gene of every sample against the planted truth, in one comparison.
+BAD="$(python3 - "${RNA}/expected_counts.json" "${RUN}/out/count_matrices" <<'PY'
+import csv, glob, json, sys
+expected = json.load(open(sys.argv[1]))
+got = {}
+for path in glob.glob(sys.argv[2] + "/*/*.counts.tsv"):
+    rd = csv.reader(open(path), delimiter="\t"); hdr = next(rd)
+    for row in rd:
+        for s, c in zip(hdr[6:], row[6:]):
+            got.setdefault(s, {})[row[0]] = int(c)
+bad = [(s, g, e, got.get(s, {}).get(g)) for s, gc in expected.items() for g, e in gc.items()
+       if got.get(s, {}).get(g) != e]
+print(len(bad), bad[:3])
+PY
+)"
+check "every planted count reproduced exactly" "0 []" "${BAD}"
+
+WIDE="$(find "${RUN}/out/counts_matrix" -name '*_by_ortholog_matrix.tsv' | head -1)"
+ogetg() { awk -F'\t' -v g="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i; next} $1==g{print $(h[c])}' "${WIDE}"; }
+check "shared gene lines up across isolates"  "200 180" "$(ogetg group_core1 IsoA_a) $(ogetg group_core1 IsoB_1)"
+check "paralogues summed into one group"       "40"      "$(ogetg group_para IsoA_a)"
+check "gene absent from an isolate is NA"      "NA"      "$(ogetg group_onlyA IsoB_1)"
+check "present but unexpressed is 0, not NA"   "0"       "$(ogetg group_silent IsoB_1)"
+check "same gene absent elsewhere is NA"       "NA"      "$(ogetg group_silent IsoA_a)"
+check "quoted comma survives in annotation"    "hypothetical protein, core1 family" "$(ogetg group_core1 annotation)"
+check "long table: 3 samples' features"        "17"      "$(awk 'NR>1' "${RUN}/out/counts_long/counts_long.tsv" | wc -l | tr -d ' ')"
+check "reads aligned to their own assembly"    "100.00 100.00 100.00" \
+      "$(python3 -c "import json,sys; print(' '.join(json.load(open('${RUN}/outputs.json'))['rna_seq_counts.pct_mapped']))")"
+
+# An ortholog table built from different GFFs than the ones counted against would
+# give an all-NA matrix with no error. It must be refused.
+sed 's/IsoA_0/WRONG_0/g' "${RNA}/gene_presence_absence.csv" > "${WORK}/gpa_wrongtags.csv"
+if miniwdl run "${REPO}/tasks/featurecounts.wdl" --task merge_count_matrices \
+       matrices="$(find "${RUN}/out/count_matrices/0" -name '*.counts.tsv' | head -1)" \
+       matrices="$(find "${RUN}/out/count_matrices/1" -name '*.counts.tsv' | head -1)" \
+       reference_ids=IsoA reference_ids=IsoB ortholog_table="${WORK}/gpa_wrongtags.csv" \
+       --dir "${WORK}/merge_bad" > "${WORK}/merge_bad.log" 2>&1; then
+    check "ortholog table from other GFFs is rejected" "fail" "succeeded"
+else
+    check "ortholog table from other GFFs is rejected" "1" \
+          "$(find "${WORK}/merge_bad" -name stderr.txt -exec cat {} + 2>/dev/null | grep -c "none of IsoA")"
+fi
+
+# ---- No ortholog_table supplied: the workflow builds one with Panaroo from the
+# assemblies' GFFs. Same reads, so the same planted counts must come out the far side.
+python3 - "${RNA}" "${WORK}/wf_built.json" <<'PY'
+import json, sys
+F = sys.argv[1]
+json.dump({
+  "rna_seq_counts.read1_trimmed": [F + "/%s_R1.fastq.gz" % s for s in ("IsoA_a", "IsoA_b", "IsoB_1")],
+  "rna_seq_counts.read2_trimmed": [F + "/%s_R2.fastq.gz" % s for s in ("IsoA_a", "IsoA_b", "IsoB_1")],
+  "rna_seq_counts.sample_ids": ["IsoA_a", "IsoA_b", "IsoB_1"],
+  "rna_seq_counts.reference_fastas": [F + "/IsoA.fasta", F + "/IsoB.fasta"],
+  "rna_seq_counts.reference_ids": ["IsoA", "IsoB"],
+  "rna_seq_counts.reference_annotations": [F + "/IsoA.gff3", F + "/IsoB.gff3"],
+}, open(sys.argv[2], "w"))
+PY
+miniwdl run "${REPO}/workflows/rna_seq_counts/rna_seq_counts.wdl" -i "${WORK}/wf_built.json" \
+    --dir "${WORK}/rna_built" > "${WORK}/rna_built.log" 2>&1 || {
+        echo "  workflow failed; see ${WORK}/rna_built.log"; grep ' ERROR ' "${WORK}/rna_built.log" | tail -n 5 | cut -c1-240; exit 1; }
+BRUN="$(ls -d "${WORK}"/rna_built/*_rna_seq_counts | tail -1)"
+BGPA="$(find "${BRUN}/out/ortholog_table_used" -name '*.csv' | head -1)"
+BMAT="$(find "${BRUN}/out/counts_matrix" -name '*_by_ortholog_matrix.tsv' | head -1)"
+
+# Panaroo names groups itself, so find a gene's row through its locus tag.
+group_of() { python3 - "${BGPA}" "$1" "$2" <<'PY'
+import csv, sys
+for r in csv.DictReader(open(sys.argv[1])):
+    if sys.argv[3] in (r.get(sys.argv[2]) or "").split(";"): print(r["Gene"]); break
+PY
+}
+bget() { awk -F'\t' -v g="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i; next} $1==g{print $(h[c])}' "${BMAT}"; }
+
+check "built table: isolate columns are the reference ids" "IsoA IsoB" \
+      "$(head -1 "${BGPA}" | tr ',' '\n' | grep -x -E 'IsoA|IsoB' | tr '\n' ' ' | sed 's/ $//')"
+G1="$(group_of IsoA IsoA_00001)"
+check "built table: shared gene has one row across isolates" "200 150 180" \
+      "$(bget "${G1}" IsoA_a) $(bget "${G1}" IsoA_b) $(bget "${G1}" IsoB_1)"
+GA="$(group_of IsoA IsoA_00004)"
+check "built table (sensitive): isolate-specific gene is kept"  "40 NA" "$(bget "${GA}" IsoA_a) $(bget "${GA}" IsoB_1)"
+GS="$(group_of IsoB IsoB_00005)"
+check "built table: unexpressed gene is 0 in its isolate, NA elsewhere" "0 NA" "$(bget "${GS}" IsoB_1) $(bget "${GS}" IsoA_a)"
+check "built table (sensitive): nothing left unclustered" "0" "$(grep -c '^unclustered' "${BMAT}" || true)"
+
+# A strict table (from methylation, say) drops genes seen in one genome. Emulate one
+# by keeping only the shared genes, and check that no isolate-specific expression is
+# lost: each dropped feature comes back as its own row instead.
+head -4 "${RNA}/gene_presence_absence.csv" > "${WORK}/gpa_strict.csv"
+miniwdl run "${REPO}/tasks/featurecounts.wdl" --task merge_count_matrices \
+    matrices="$(find "${RUN}/out/count_matrices/0" -name '*.counts.tsv' | head -1)" \
+    matrices="$(find "${RUN}/out/count_matrices/1" -name '*.counts.tsv' | head -1)" \
+    reference_ids=IsoA reference_ids=IsoB ortholog_table="${WORK}/gpa_strict.csv" \
+    --dir "${WORK}/merge_strict" > "${WORK}/merge_strict.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/merge_strict.log"; exit 1; }
+SMAT="$(find "${WORK}/merge_strict" -name 'counts_by_ortholog_matrix.tsv' | head -1)"
+sget() { awk -F'\t' -v g="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i; next} $1==g{print $(h[c])}' "${SMAT}"; }
+check "strict table: 3 groups + 5 unclustered rows, none lost" "8" "$(awk 'NR>1' "${SMAT}" | wc -l | tr -d ' ')"
+check "strict table: dropped gene keeps its counts"  "40 NA" "$(sget unclustered:IsoA:IsoA_00004 IsoA_a) $(sget unclustered:IsoA:IsoA_00004 IsoB_1)"
+check "strict table: dropped gene from the other isolate" "60 NA" "$(sget unclustered:IsoB:IsoB_00004 IsoB_1) $(sget unclustered:IsoB:IsoB_00004 IsoA_a)"
+
+# featureCounts >= 2.0.2: -p alone counts each MATE, doubling every fragment.
+# The original workflow passed only -p. Prove the doubling on the same BAMs, so
+# the default cannot quietly regress to it.
+BAMA="$(find "${RUN}/out/markdup_bams/0" -name '*.bam' | head -1)"
+miniwdl run "${REPO}/tasks/featurecounts.wdl" --task featurecounts \
+    input_bams="${BAMA}" sample_ids=IsoA_a annotation="${RNA}/IsoA.gff3" \
+    reference_name=matesonly ignore_duplicates=false count_read_pairs=false \
+    --dir "${WORK}/fc_mates" > "${WORK}/fc_mates.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/fc_mates.log"; exit 1; }
+MATES="$(find "${WORK}/fc_mates" -name 'matesonly.counts.tsv' | head -1)"
+check "-p without --countReadPairs doubles counts (why it defaults on)" "400" \
+      "$(awk -F'\t' '$1=="IsoA_00001"{print $7}' "${MATES}")"
+
+# A GFF from a different assembly must be rejected at the index step, before
+# any alignment is billed; otherwise every count is 0 with no error.
+if miniwdl run "${REPO}/tasks/bwa.wdl" --task bwa_index \
+       reference_fasta="${RNA}/IsoA.fasta" reference_name=IsoA annotation="${RNA}/IsoB.gff3" \
+       --dir "${WORK}/idx_bad" > "${WORK}/idx_bad.log" 2>&1; then
+    check "GFF/FASTA contig mismatch is rejected" "fail" "succeeded"
+else
+    check "GFF/FASTA contig mismatch is rejected" "fail" "fail"
+fi
+
+# --------------------------------------------------------------------------
 echo
 echo "${PASS} passed, ${FAIL} failed"
 [ "${FAIL}" -eq 0 ]
