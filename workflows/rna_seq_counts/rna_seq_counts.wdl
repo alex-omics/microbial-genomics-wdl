@@ -169,12 +169,16 @@ workflow rna_seq_counts {
 
     scatter (i in range(length(sample_ids))) {
 
+        # Each lookup is its own declaration: Dockstore's WDL parser rejects an
+        # index expression nested inside another (e.g. a[b.c[i]]).
+        Int sample_used_pos = match.sample_to_used_pos[i]
+
         call bwa_task.bwa_mem {
             input:
                 read1                 = read1_trimmed[i],
                 read2                 = read2_trimmed[i],
                 sample_name           = sample_ids[i],
-                reference_bundle      = bwa_index.reference_bundle[match.sample_to_used_pos[i]],
+                reference_bundle      = bwa_index.reference_bundle[sample_used_pos],
                 mapq_min              = mapq_min,
                 mark_secondary        = mark_secondary,
                 samtools_filter_flags = samtools_filter_flags,
@@ -222,18 +226,22 @@ workflow rna_seq_counts {
         scatter (k in range(length(match.used_reference_idx))) {
 
             scatter (i in range(length(sample_ids))) {
-                if (match.sample_to_used_pos[i] == k) {
+                Int sample_group_pos = match.sample_to_used_pos[i]
+                if (sample_group_pos == k) {
                     File   group_bam    = bam_for_counting[i]
                     String group_sample = sample_ids[i]
                 }
             }
 
+            File?  group_gff3      = resolved_gff3[k]
+            String group_reference = used_reference_name[k]
+
             call counts_task.featurecounts {
                 input:
                     input_bams         = select_all(group_bam),
                     sample_ids         = select_all(group_sample),
-                    annotation         = select_first([resolved_gff3[k]]),
-                    reference_name     = used_reference_name[k],
+                    annotation         = select_first([group_gff3]),
+                    reference_name     = group_reference,
                     strandness         = strandness,
                     feature_type       = feature_type,
                     attribute_type     = attribute_type,
