@@ -705,6 +705,33 @@ MATES="$(find "${WORK}/fc_mates" -name 'matesonly.counts.tsv' | head -1)"
 check "-p without --countReadPairs doubles counts (why it defaults on)" "400" \
       "$(awk -F'\t' '$1=="IsoA_00001"{print $7}' "${MATES}")"
 
+# A Bakta GFF3 ends with the whole assembly as a ##FASTA block. Stripping it with an
+# early-exiting awk killed the upstream reader with SIGPIPE, which pipefail turned into
+# a silent task failure - but only once the block outgrew the pipe buffer, so the tiny
+# fixture GFFs never showed it. Pad one to genome size (~7 MB) and require both the
+# counting task and the contig check to cope.
+python3 - "${RNA}/IsoA.gff3" "${WORK}/IsoA_big.gff3" <<'PY'
+import random, sys
+random.seed(7)
+with open(sys.argv[1]) as src, open(sys.argv[2], "w") as out:
+    out.write(src.read())
+    for _ in range(90000):
+        out.write("".join(random.choice("ACGT") for _ in range(80)) + "\n")
+PY
+miniwdl run "${REPO}/tasks/featurecounts.wdl" --task featurecounts \
+    input_bams="${BAMA}" sample_ids=IsoA_a annotation="${WORK}/IsoA_big.gff3" \
+    reference_name=biggff ignore_duplicates=false \
+    --dir "${WORK}/fc_biggff" > "${WORK}/fc_biggff.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/fc_biggff.log"; exit 1; }
+BIGGFF="$(find "${WORK}/fc_biggff" -name 'biggff.counts.tsv' | head -1)"
+check "counting works with a genome-sized ##FASTA block in the GFF" "200" \
+      "$(awk -F'\t' '$1=="IsoA_00001"{print $7}' "${BIGGFF}")"
+miniwdl run "${REPO}/tasks/bwa.wdl" --task bwa_index \
+    reference_fasta="${RNA}/IsoA.fasta" reference_name=IsoA annotation="${WORK}/IsoA_big.gff3" \
+    --dir "${WORK}/idx_biggff" > "${WORK}/idx_biggff.log" 2>&1 \
+    && check "contig check works with a genome-sized ##FASTA block" "ok" "ok" \
+    || check "contig check works with a genome-sized ##FASTA block" "ok" "failed"
+
 # A GFF from a different assembly must be rejected at the index step, before
 # any alignment is billed; otherwise every count is 0 with no error.
 if miniwdl run "${REPO}/tasks/bwa.wdl" --task bwa_index \

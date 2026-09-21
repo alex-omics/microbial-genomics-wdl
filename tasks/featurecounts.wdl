@@ -62,7 +62,10 @@ task featurecounts {
 
         # A Bakta GFF3 ends with a ##FASTA block of raw sequence, which is not
         # feature lines. Drop it rather than rely on the counter skipping it.
-        plain ~{annotation} | awk '/^##FASTA/{exit} {print}' > annotation.gff
+        # awk must read to the end: quitting at ##FASTA would kill the upstream
+        # reader with SIGPIPE, which pipefail turns into a silent task failure
+        # once the sequence block is larger than the pipe buffer (any real genome).
+        plain ~{annotation} | awk '/^##FASTA/{skip=1} !skip' > annotation.gff
 
         fc_flags=()
         if [ "~{paired_end}" == "true" ]; then fc_flags+=("-p"); fi

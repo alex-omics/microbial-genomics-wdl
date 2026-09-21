@@ -49,7 +49,7 @@ task bwa_index {
         if [ -n "~{select_first([annotation, ''])}" ]; then
             grep '^>' ref/reference.fasta | sed 's/^>//; s/[[:space:]].*//' | sort -u > fasta_contigs.txt
             plain ~{select_first([annotation, ''])} \
-                | awk '/^##FASTA/{exit} /^#/{next} NF{print $1}' | sort -u > gff_contigs.txt
+                | awk '/^##FASTA/{skip=1} skip||/^#/{next} NF{print $1}' | sort -u > gff_contigs.txt
             # (comm is not in this image; awk set-difference instead.)
             MISSING="$(awk 'NR==FNR{seen[$0]; next} !($0 in seen)' fasta_contigs.txt gff_contigs.txt)"
             if [ -n "${MISSING}" ]; then
