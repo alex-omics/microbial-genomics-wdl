@@ -27,8 +27,8 @@ task annotate_methylation {
         flank_upstream:     "Bases upstream of each feature to treat as putative promoter/regulatory region (default = 300)"
         trim_to_intergenic: "Subtract annotated feature bodies from the upstream windows. Bacterial genomes are operonic and densely packed, so a fixed upstream window routinely lands inside the neighbouring gene (default = true)"
         min_coverage:       "Minimum Nvalid_cov for a site to be carried into the annotated table (default = 10)"
-        min_percent:        "Minimum percent-modified for a site to be carried into the annotated table. Some percent floor is essential: modkit emits a row for EVERY evaluated A and C, so filtering on coverage alone keeps millions of unmethylated positions and turns any downstream site count into a proxy for gene length. The VALUE, though, is unsettled and worth tuning against the bacterial literature rather than trusting. 50 is a placeholder, and it is a conservative one: RM methylation typically sits near 100%, so partially-methylated sites are the interesting anomaly, and a 50% cut discards half of that range. Re-thresholding is cheap — it re-runs this task and the ortholog join, not alignment, pileup, Bakta or Panaroo (default = 50.0)"
-        min_mod_reads:      "Minimum number of reads actually carrying the modification (bedMethyl Nmod, column 12). This is what makes a low percent floor safe: percent and coverage interact, so at 10x a '20% methylated' site is two reads and indistinguishable from noise, while at 100x it is twenty and real. Requiring an absolute count alongside the fraction lets min_percent be lowered without the table filling up with thinly-supported calls (default = 3)"
+        min_percent:        "Minimum percent-modified for a site to be carried into the annotated table. modkit reports every evaluated A and C, so a percent floor is essential; without one, site counts track gene length. The value is a starting point: restriction-modification methylation is typically near 100%, so a lower cut also keeps partially methylated sites. Re-thresholding reruns only this task and the ortholog join (default = 50.0)"
+        min_mod_reads:      "Minimum number of reads carrying the modification (bedMethyl Nmod, column 12). Percent and coverage interact: at 10x, 20% is two reads and indistinguishable from noise, while at 100x it is twenty. An absolute count lets min_percent be lowered without admitting thinly supported calls (default = 3)"
         feature_type:       "GFF feature type to annotate against (default = CDS)"
         cpu:                "Number of CPUs delegated to task (default = 2)"
         mem_gb:             "Amount of memory in GB delegated to task (default = 8)"
@@ -113,8 +113,7 @@ task annotate_methylation {
         # in the output columns for filtering later.
         # Column map after -wa -wb: bedMethyl is 18 columns and features.bed is
         # 7, so the feature fields land at 19-25 (22=locus_tag, 23=gene,
-        # 24=strand, 25=product). Verified against bedtools 2.31.1 rather than
-        # counted by eye.
+        # 24=strand, 25=product), checked against bedtools 2.31.1 output.
         # region_length ($21-$20) is carried so site counts can be normalised
         # into a density. Without it a long gene looks more methylated than a
         # short one purely by having more positions to be methylated at.

@@ -37,7 +37,7 @@ task featurecounts {
         count_read_pairs:   "Count fragments rather than reads (--countReadPairs). Since subread 2.0.2, -p alone counts each mate separately, double-counting every pair (default = true)."
         require_both_mates: "Only count pairs where both mates aligned (-B; paired-end only) (default = true)"
         count_chimeric:     "Count chimeric pairs. If false they are discarded (-C) (default = false)"
-        ignore_duplicates:  "Ignore reads flagged as duplicates (--ignoreDup) (default = false). Off because without UMIs, duplicates in RNA-seq are mostly independent molecules from the same short, highly expressed transcript; discarding them takes proportionally more from the genes with the most signal."
+        ignore_duplicates:  "Ignore reads flagged as duplicates (--ignoreDup) (default = false). Off because, without UMIs, RNA-seq duplicates are mostly independent molecules from short, highly expressed transcripts; excluding them removes the most reads from the most expressed genes."
         fraction_counting:  "Split multi-overlapping reads fractionally (--fraction) (default = false)"
         min_overlap:        "Minimum bases overlapping a feature (default = 1)"
         cpu:                "Number of CPUs delegated to task (default = 8)"
@@ -140,7 +140,7 @@ task merge_count_matrices {
     parameter_meta {
         matrices:       "Per-reference count matrices from featurecounts, in the same order as reference_ids"
         reference_ids:  "Reference (isolate) each matrix was counted against"
-        ortholog_table: "Optional Panaroo gene_presence_absence.csv. Needed to put samples from different isolates in one wide matrix, because each isolate's features carry its own locus tags. Its per-isolate column headers must equal reference_ids."
+        ortholog_table: "Optional Panaroo gene_presence_absence.csv. Puts samples from different isolates on common rows, since each isolate's features carry its own locus tags. Its isolate column headers must equal reference_ids."
         basename:       "Basename for the outputs"
         cpu:            "Number of CPUs delegated to task (default = 2)"
         mem_gb:         "Amount of memory in GB delegated to task (default = 16)"
@@ -149,7 +149,7 @@ task merge_count_matrices {
     }
 
     meta {
-        description: "Combine per-isolate count matrices into one deliverable. Always emits a long-format table (one row per isolate x sample x feature), which is valid however the isolates were annotated. Emits a single wide matrix when one exists: for a single shared reference, that matrix itself; for several isolates, only if an ortholog table is supplied, in which case rows are ortholog groups and a gene an isolate does not carry is NA, not 0 - a zero count and an absent gene are different facts."
+        description: "Combine per-isolate count matrices. Always emits a long-format table (one row per isolate x sample x feature). Emits a single wide matrix when one exists: the matrix itself for a single reference, or, for several isolates, an ortholog-group matrix when an ortholog table is supplied. A gene an isolate lacks is NA, not 0."
     }
 
     command <<<

@@ -19,7 +19,7 @@ task motif_landscape_summary {
     }
 
     meta {
-        description: "Tier 3: cross-isolate variability, at two resolutions. A motif or gene that is uniform across every isolate is very likely RM housekeeping -- the same enzyme doing the same thing everywhere. One that varies sharply across isolates is where isolate-specific biology, including candidate regulatory methylation, would actually show up. Neither table implies causation; both are a triage ranking for follow-up, not a phenotype association test."
+        description: "Tier 3: cross-isolate variability, by motif and by gene. A motif or gene that is uniform across isolates is likely restriction-modification housekeeping; one that varies sharply is where isolate-specific biology would show up. Both tables are a triage ranking for follow-up, not a phenotype association test."
     }
 
     command <<<

@@ -9,7 +9,7 @@ task fasterq_dump {
     }
 
     parameter_meta {
-        accession: "Single-run SRA/ENA/DDBJ accession (SRR/ERR/DRR) — wire to this.SRA_ID. Not SRX/SRS/SRP/PRJ*: those identify an experiment, sample, study, or project, each of which can span multiple runs, and this task fetches exactly one"
+        accession: "Single-run SRA/ENA/DDBJ accession (SRR/ERR/DRR); wire to this.SRA_ID. Not SRX/SRS/SRP/PRJ*, which can span multiple runs; this task fetches exactly one"
         disk_gb:   "Disk space in GB (default=50; fine for MiSeq-scale Illumina, bump substantially for a full ONT/PacBio flowcell)"
         cpu:       "CPUs for fasterq-dump (default=4)"
         memory_gb: "Memory in GB (default=8)"

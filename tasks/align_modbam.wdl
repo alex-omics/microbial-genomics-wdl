@@ -16,12 +16,12 @@ task align_modbam {
     }
 
     parameter_meta {
-        modbam:             "Modified-basecalled BAM from dorado / ont_basecall_client, carrying MM and ML tags. Aligned or unaligned both work; an aligned input is reduced back to primary records in original orientation before realignment."
+        modbam:             "Modified-basecalled BAM carrying MM and ML tags. Aligned or unaligned both work; an aligned input is reduced to primary records in original orientation before realignment."
         sample_name:        "Some identifier for naming outputs"
-        reference_fasta:    "Sequence to align against. The intended use is each isolate's OWN assembly: self-mapping keeps every modification call in the isolate's native coordinates and, critically, means motif discovery reads sequence context from the isolate's real sequence rather than a reference's."
+        reference_fasta:    "Sequence to align against. Intended use is each isolate's own assembly, so modification calls stay in the isolate's coordinates and motif discovery reads the isolate's real sequence."
         minimap2_preset:    "minimap2 -x preset (default = map-ont)"
-        min_read_length:    "Drop reads shorter than this many bp before alignment, not after. A raw modBAM commonly carries a tail of very short fragments (adapter remnants, truncated translocations) that are mechanically incapable of a confident minimap2 placement; left in, they inflate the read count without ever being mappable and deflate percent_mapped for reasons that have nothing to do with whether the modbam and assembly actually match. 500 sits well clear of that junk (empirically ~50-90bp) while staying below the ~1000bp floor long-read assemblers use — that threshold is tuned for assembly-graph overlap detection, a different job than this task's: every correctly-placed read here is a vote toward modkit's coverage floor, so a shorter-but-real read is still worth keeping (default = 500)"
-        min_mapped_percent: "Fail the task if fewer than this percent of primary reads (AFTER the length filter) map. Self-mapping should exceed 95%; a low rate almost always means the modbam and the assembly belong to different isolates. 0 disables the check (default = 0)"
+        min_read_length:    "Drop reads shorter than this many bp before alignment. A raw modBAM often has a tail of very short fragments that cannot be placed confidently; left in, they inflate the read count and deflate percent_mapped (default = 500)"
+        min_mapped_percent: "Fail if fewer than this percent of primary reads (after the length filter) map. Self-mapping should exceed 95%; a low rate usually means the modbam and assembly are from different isolates. 0 disables the check (default = 0)"
         cpu:                "Number of CPUs delegated to task (default = 8)"
         mem_gb:             "Amount of memory in GB delegated to task (default = 32)"
         disk_gb:            "Amount of disk space in GB delegated to task (default = 150)"

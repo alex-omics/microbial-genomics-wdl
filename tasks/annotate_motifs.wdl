@@ -25,7 +25,7 @@ task annotate_motif_membership {
     }
 
     meta {
-        description: "Adds a motif column to annotate_methylation's per-site table: which of this isolate's candidate motifs (de novo + REBASE), if any, each methylated site falls inside. This is the single per-isolate deliverable combining gene/product/region annotation, promoter windows, and motif context alongside the actual methylation call, in one row per site."
+        description: "Adds a motif column to annotate_methylation's per-site table: which of the isolate's candidate motifs (de novo and REBASE), if any, each methylated site falls inside. Gives one row per site, with gene, product, region and motif context alongside the methylation call."
     }
 
     command <<<

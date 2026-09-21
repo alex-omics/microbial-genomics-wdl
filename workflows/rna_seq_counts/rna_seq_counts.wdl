@@ -10,7 +10,7 @@ import "../../tasks/featurecounts.wdl" as counts_task
 workflow rna_seq_counts {
 
     meta {
-        description: "Align paired-end RNA-seq reads with BWA-MEM and count reads per feature, with each sample aligned to its own isolate's assembly rather than one shared reference. Replicate samples are matched to their parent assembly by name. Because isolates aligned to their own assemblies carry independent locus tags, an ortholog table (Panaroo) is what makes their counts comparable: it is built here from the assemblies unless supplied, after annotating with Bakta unless annotations are supplied. Also works against a single shared reference, where none of that is needed. Emits per-isolate count matrices, a combined long-format table, and one ortholog-level matrix across isolates."
+        description: "Align paired-end RNA-seq reads with BWA-MEM and count reads per feature, with each sample aligned to its own isolate's assembly rather than one shared reference. Replicates are matched to their parent assembly by name. Isolates aligned to their own assemblies carry independent locus tags, so an ortholog table (Panaroo) is built to make their counts comparable, after annotating with Bakta; either step is skipped if its output is supplied. Also works against a single shared reference, where neither is needed. Emits per-isolate count matrices, a long-format table, and one ortholog-level matrix."
         author: "Alex Arvanitis"
     }
 
@@ -95,14 +95,14 @@ workflow rna_seq_counts {
         strandness:             "0 = unstranded, 1 = stranded, 2 = reverse-stranded (default = 2)"
         count_read_pairs:       "Count fragments not reads (default = true). Without it subread >= 2.0.2 counts each mate."
         ignore_duplicates:      "Ignore duplicate-flagged reads when counting (default = false). Duplicates are still marked, and PERCENT_DUPLICATION still reported, as a QC metric."
-        reference_annotations:  "Pre-computed GFF3 per reference, positionally matched to reference_fastas (e.g. the Bakta GFF3s). Supplying them skips Bakta. Must come from the same assembly with contig names kept (Bakta: --keep-contig-headers), which is checked before alignment. To build the ortholog table they should carry Bakta's ##FASTA block (its default), or else the assembly must be uncompressed."
+        reference_annotations:  "Pre-computed GFF3 per reference (e.g. Bakta), positionally matched to reference_fastas. Supplying them skips Bakta. Contig names must match the assembly (Bakta: --keep-contig-headers), which is checked before alignment. To build the ortholog table they should include Bakta's ##FASTA block (its default), or the assembly must be uncompressed."
         bakta_db:               "Optional full Bakta database .tar.gz. Omitted, the light database in the image is used. Ignored when reference_annotations is supplied."
         proteins:               "Trusted proteins for Bakta --proteins, e.g. the PAO1 proteome. Ignored when reference_annotations is supplied."
         genus:                  "Genus for Bakta (default = Pseudomonas). Ignored when reference_annotations is supplied."
         species:                "Species for Bakta (default = aeruginosa). Ignored when reference_annotations is supplied."
-        ortholog_table:         "Panaroo gene_presence_absence.csv (e.g. the pangenome workflow's gene_presence_absence output), whose isolate columns equal reference_ids. Supplying it skips Panaroo, which is how a table is reused across reruns and across workflows. Checked before any alignment."
+        ortholog_table:         "Panaroo gene_presence_absence.csv, whose isolate columns equal reference_ids. Supplying it skips Panaroo. Checked before any alignment."
         run_pangenome:          "Build the ortholog table with Panaroo when several isolates are used and none is supplied. Off, you get the per-isolate matrices and the long table but no cross-isolate matrix (default = true)."
-        panaroo_clean_mode:     "Panaroo error-correction: strict, moderate or sensitive (default = sensitive). Deliberately NOT the methylation workflow's strict: strict and moderate discard genes found in few genomes as likely annotation error, which is exactly the accessory transcripts this workflow aligns to own assemblies to keep. Tested: on a 2-genome panel only sensitive kept the isolate-specific genes."
+        panaroo_clean_mode:     "Panaroo error-correction: strict, moderate or sensitive (default = sensitive). strict and moderate discard genes found in few genomes as likely annotation error, which removes the accessory genes this workflow exists to keep."
         merge_paralogs:         "Panaroo --merge_paralogs (default = false). See the panaroo task for the tradeoff."
     }
 

@@ -2,24 +2,15 @@ version 1.0
 
 # tasks/pyseer.wdl
 #
-# Standalone pyseer tasks for microbial pangenome-wide association studies
-# (GWAS): LMM association with the likelihood-ratio test ("vanilla" pyseer),
-# optional lineage effects, optional per-covariate-column scanning, and a
-# gene/module-annotation join that never touches pyseer's own output files.
+# pyseer tasks for pangenome-wide association studies: LMM association with the
+# likelihood-ratio test, optional lineage effects, optional per-covariate
+# scanning, and a gene/module-annotation join that never modifies pyseer's own
+# output files.
 #
-# `presence_absence_rtab` is deliberately generic: pyseer's own docs describe
-# the Rtab format it accepts via --pres as usable "flexibly to represent
-# variants from other sources" — a block_id x sample 0/1 matrix, nothing
-# gene-specific about it. A Panaroo gene_presence_absence.Rtab and a
-# pangenome-network module Rtab (module_id x isolate) both work here
-# unchanged; only the annotation table handed to pyseer_annotate_results
-# needs to match whichever block type was tested.
-#
-# Deliberately independent of tasks/gwas/task_pyseer.wdl (feature/multimodal-
-# gwas), which is a much larger, tightly-coupled translation of the microGWAS
-# Snakemake DAG (unitigs, structural variants, panfeed, whole-genome elastic
-# net). That task expects its own upstream prepare_pyseer/mash/mlst inputs and
-# is not meant to run on its own. This file is for calling pyseer by itself.
+# `presence_absence_rtab` is a generic block_id x sample 0/1 matrix, so a Panaroo
+# gene_presence_absence.Rtab and a pangenome-network module Rtab both work
+# unchanged. Only the annotation table given to pyseer_annotate_results has to
+# match the block type tested.
 
 task pyseer_similarity_from_phylogeny {
 
@@ -40,7 +31,7 @@ task pyseer_similarity_from_phylogeny {
     }
 
     meta {
-        description: "Generate both a kinship (similarity) matrix and a plain patristic distance matrix from a phylogeny, via pyseer's own phylogeny_distance.py with and without --lmm. The distance matrix is not optional overhead: pyseer's --lineage refuses to run without one (\"Must also provide a distance matrix to report lineage effects\"), even when --lineage-clusters is supplied - it is not just the fallback for MDS-derived lineages. Both come from the same script and the same input tree, so producing both here is nearly free."
+        description: "Generate a kinship (similarity) matrix and a patristic distance matrix from a phylogeny, using pyseer's phylogeny_distance.py with and without --lmm. pyseer's --lineage requires a distance matrix even when --lineage-clusters is supplied."
     }
 
     command <<<
@@ -96,7 +87,7 @@ task pyseer_lineage_effects {
 
     parameter_meta {
         phenotype_tsv:         "Two columns: sample_id\\tphenotype_value"
-        presence_absence_rtab: "block_id x isolate 0/1 matrix - only the first few blocks are actually used, see meta.description"
+        presence_absence_rtab: "block_id x isolate 0/1 matrix. Only the first few blocks are used (see description)."
         distance_matrix:       "From pyseer_similarity_from_phylogeny. pyseer's --lineage refuses to run without one, even with lineage_clusters supplied."
         lineage_clusters:      "Two columns sample_id\\tcluster_id (e.g. BAPS), passed as --lineage-clusters. Falls back to pyseer's MDS-derived lineages if omitted."
         covariates_file:       "Tab-separated: sample_id, then one named column per covariate. Passed through so lineage effects are adjusted the same way as the main association."
@@ -108,7 +99,7 @@ task pyseer_lineage_effects {
     }
 
     meta {
-        description: "Report per-lineage effects as their own minimal-input pyseer call, deliberately never combined with the full variant-testing association. Mirrors the pattern already validated in the microGWAS translation (tasks/gwas/task_pyseer.wdl run_pyseer): that task's own comment says the lineage pass 'exists to produce the per-lineage effect table, not association statistics, so pyseer is given only enough input to initialise' - it feeds pyseer a 10-line slice of the real variant file, not the whole thing. This task does the same against presence_absence_rtab. Folding --lineage into the main --lmm call against the *full* Rtab is what caused an unexplained OOM against real 200-isolate BBSS data (6,427 variants, 2.5 MB Rtab) that killed a 32 GB machine in under a minute - too fast and too small to be a real memory shortage, and consistent with pyseer's lineage-effects code path and the full per-variant LMM loop compounding in one process."
+        description: "Report per-lineage effects as a separate, minimal-input pyseer call, never combined with the full variant-testing association. pyseer is given only a small slice of presence_absence_rtab, enough to initialise; adding --lineage to the full --lmm call can exhaust memory at scale."
     }
 
     command <<<
@@ -163,19 +154,12 @@ task pyseer_association {
         File?           covariates_file
         String?         use_covariates
 
-        # Combination scan: for each entry here, run a *separate* association
-        # using exactly that group of covariates_file columns (joined with
-        # "+", e.g. "BAPS" or "RST+OspC+BAPS") as the sole covariates, so a
-        # module's association can be checked against individual lineage
-        # markers or deliberately chosen small groups of them - without
-        # jointly loading every column at once, which burns degrees of
-        # freedom fast (see pyseer_gwas README: an all-four joint run on an
-        # 8-sample panel left zero real variants able to fit; the same panel
-        # with just MLST plus one other column already lost half). Categorical
-        # columns only — quantitative covariates need the use_covariates
-        # escape hatch above. Not a request to enumerate every combination:
-        # each entry here is one deliberately-chosen, auditable pyseer run,
-        # not a black-box powerset search.
+        # Combination scan: for each entry, run a separate association using exactly
+        # that group of covariates_file columns (joined with "+", e.g. "MLST" or
+        # "MLST+BAPS") as the sole covariates. This checks an association against
+        # individual lineage markers or chosen small groups, without loading every
+        # column at once, which uses up degrees of freedom quickly. Categorical
+        # columns only; quantitative covariates go through use_covariates.
         Array[String]   covariate_combinations = []
 
         Int             cpu     = 4
@@ -191,9 +175,9 @@ task pyseer_association {
         variant_vcf:           "Optional VCF for an additional SNP-based association, run alongside the presence/absence test"
         min_af:                "Minimum allele/block frequency filter (default = 0.05)"
         max_af:                "Maximum allele/block frequency filter (default = 0.95)"
-        covariates_file:       "Tab-separated: sample_id, then one named column per covariate (e.g. RST, OspC, MLST, BAPS)"
+        covariates_file:       "Tab-separated: sample_id, then one named column per covariate (e.g. MLST, BAPS)"
         use_covariates:        "pyseer --use-covariates value (column indices into covariates_file, 'q' suffix for quantitative) applied jointly to the main association"
-        covariate_combinations: "Groups of covariates_file column names to test together, one group per pyseer run. Each entry is one or more column names joined with '+' (e.g. 'BAPS' or 'RST+OspC+BAPS'); a bare name is a single-covariate run. Column names must not contain '+', whitespace, or tabs."
+        covariate_combinations: "Groups of covariates_file column names to test together, one group per pyseer run. Each entry is one or more column names joined with '+' (e.g. 'BAPS' or 'MLST+BAPS'); a bare name is a single-covariate run. Column names must not contain '+', whitespace, or tabs."
         cpu:                   "Number of CPUs delegated to task (default = 4)"
         mem_gb:                "Amount of memory in GB delegated to task (default = 8)"
         disk_gb:               "Amount of disk space in GB delegated to task (default = 30)"
@@ -201,7 +185,7 @@ task pyseer_association {
     }
 
     meta {
-        description: "Run pyseer's LMM association (likelihood-ratio test) of presence/absence blocks against a phenotype, correcting for population structure via a phylogeny-derived kinship matrix. Scans deliberately-chosen covariate combinations and runs an additional SNP-based pass if a VCF is supplied. Lineage effects are a separate task (pyseer_lineage_effects) - see its meta.description for why folding --lineage into this call is dangerous at real scale."
+        description: "Run pyseer's LMM association (likelihood-ratio test) of presence/absence blocks against a phenotype, correcting for population structure via a phylogeny-derived kinship matrix. Scans deliberately-chosen covariate combinations and runs an additional SNP-based pass if a VCF is supplied. Lineage effects are a separate task (pyseer_lineage_effects)."
     }
 
     command <<<
@@ -229,10 +213,9 @@ task pyseer_association {
         echo "Gene association complete. Results:"
         wc -l pyseer_gene_results.tsv
 
-        # Pattern-counted significance threshold (0.05 / unique presence-
-        # absence patterns), via pyseer's own count_patterns.py rather than a
-        # hand-rolled count - far less conservative than counting every raw
-        # variant, since co-occurring blocks share a pattern.
+        # Significance threshold: 0.05 / unique presence-absence patterns, via pyseer's
+        # count_patterns.py. Less conservative than counting every variant, since
+        # co-occurring blocks share a pattern.
         THRESHOLD="$(count_patterns.py --threshold gene_patterns.txt 2>> pyseer_gene_stderr.log)"
         echo "${THRESHOLD}" > significance_threshold.txt
         echo "Bonferroni threshold: ${THRESHOLD}"
@@ -274,12 +257,8 @@ print(f'Significant hits (p < {threshold:.3e}): {len(sig)}')
             exit 1
         fi
         if [ "${#COV_COMBOS[@]}" -gt 0 ]; then
-            # tr -d '\r': covariates_file may have Windows CRLF line endings
-            # (e.g. an Excel-exported TSV). `head`/`awk` only recognise \n as
-            # a line terminator, so the *last* header column would otherwise
-            # keep a trailing \r and never string-match its column name here
-            # - pyseer's own Python-side read of the same file is unaffected,
-            # since text-mode file reads normalise \r\n to \n automatically.
+            # tr -d '\r': strip Windows line endings, which head/awk would otherwise leave
+            # on the last header column and break the name match below.
             HEADER="$(head -1 ~{default="" covariates_file} | tr -d '\r')"
             for COMBO in "${COV_COMBOS[@]}"; do
                 IFS='+' read -ra MEMBERS <<< "${COMBO}"
@@ -307,12 +286,9 @@ print(f'Significant hits (p < {threshold:.3e}): {len(sig)}')
                     2> "covariate_scan/${COMBO}.log"
             done
 
-            # Long-format comparison table: one row per (variant, combination),
-            # native pyseer column names preserved (this is a provenance side
-            # table, not the renamed/reformatted output - that is
-            # pyseer_annotate_results's job on a single file of interest).
-            # Names are passed through a file, not shell-interpolated into the
-            # python source, so quoting is never a concern here.
+            # Long-format comparison table: one row per (variant, combination), with
+            # pyseer's column names preserved. Names are passed through a file, not
+            # interpolated into the python source.
             printf '%s\n' "${COV_COMBOS[@]}" > covariate_combinations.txt
             python3 -c "
 import pandas as pd

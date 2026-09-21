@@ -16,8 +16,8 @@ task rebase_blastp {
     parameter_meta {
         faa:                   "This isolate's predicted proteins, from bakta.faa"
         sample_name:           "Some identifier for naming outputs"
-        rebase_goldset_fasta:  "REBASE Gold Standard protein set: experimentally characterised MTases only, not the full REBASE database of putative homologs. Stage as a File input rather than baking into the image or committing to the repo -- both MPore (GPL-3.0) and REBASE itself (NEB's own terms) carry redistribution terms that a runtime input sidesteps."
-        evalue:                "BLASTP e-value cutoff for a homology call, passed straight through to blastp -evalue. Deliberately a String, not a Float: WDL renders a Float this small as a fixed 6-decimal string, so 1e-25 becomes the literal text \"0.000000\" and blastp rejects it as non-positive. 1e-25 matches the threshold MPore itself uses for candidate MTase identification (default = \"1e-25\")"
+        rebase_goldset_fasta:  "REBASE Gold Standard protein set (experimentally characterised MTases only). Supplied as an input rather than included in the image or repo, because REBASE carries its own redistribution terms."
+        evalue:                "BLASTP e-value cutoff for a homology call, passed to blastp -evalue. A String rather than a Float because WDL renders a very small Float as \"0.000000\", which blastp rejects (default = \"1e-25\")"
         cpu:                   "Number of CPUs delegated to task (default = 4)"
         mem_gb:                "Amount of memory in GB delegated to task (default = 8)"
         disk_gb:                "Amount of disk space in GB delegated to task (default = 20)"
@@ -25,7 +25,7 @@ task rebase_blastp {
     }
 
     meta {
-        description: "BLASTP this isolate's predicted proteins against the REBASE Gold Standard set. Split from the motif join into its own task deliberately: the BLAST image carries no Python, and reaching for a heavier combined image would be worse than one more small, single-purpose task in the same pattern as the rest of this pipeline."
+        description: "BLASTP this isolate's predicted proteins against the REBASE Gold Standard set. Kept separate from the motif join because the BLAST image has no Python."
     }
 
     command <<<
@@ -79,7 +79,7 @@ task rebase_join_motifs {
     }
 
     meta {
-        description: "Join BLASTP hits against REBASE's motif table to report each candidate MTase's predicted recognition motif and modification type. This is inventory, not a statistical test: it says which restriction-modification systems the isolate is likely to carry and which motifs they SHOULD be protecting with methylation, which is what a genome's own motif occurrences can then be checked against."
+        description: "Join BLASTP hits against REBASE's motif table to report each candidate MTase's predicted recognition motif and modification type. This is an inventory of the restriction-modification systems the isolate likely carries, not a statistical test."
     }
 
     command <<<

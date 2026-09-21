@@ -9,13 +9,6 @@ import "../../tasks/pyseer.wdl" as pyseer_tasks
 # block_id x isolate presence/absence Rtab - a Panaroo gene_presence_absence
 # matrix or a pangenome-network module matrix both work unchanged - and a
 # core-genome phylogeny for population-structure correction.
-#
-# Deliberately separate from the multimodal_gwas workflow (feature/
-# multimodal-gwas), which re-implements the much larger microGWAS Snakemake
-# DAG (unitigs, structural variants, panfeed, whole-genome elastic net) as
-# one component of a bigger pipeline. This workflow exists to run pyseer on
-# its own; multimodal_gwas can later import it once that pipeline needs the
-# same tasks.
 
 workflow pyseer_gwas {
 
@@ -31,9 +24,8 @@ workflow pyseer_gwas {
 
         File?           variant_vcf
 
-        # Joint covariate adjustment, applied to every result. Also see
-        # covariate_combinations below for testing chosen groups of
-        # covariates on their own, without loading all of them at once.
+        # Joint covariate adjustment, applied to every result. See
+        # covariate_combinations for testing chosen groups on their own.
         File?           covariates_file
         String?         use_covariates
         Array[String]   covariate_combinations = []
@@ -41,13 +33,10 @@ workflow pyseer_gwas {
         Boolean         run_lineage_effects = false
         File?           lineage_clusters
 
-        # Gene/module-name annotation join, applied to gene_results and to
-        # the covariate_combinations scan's long-format table. Left unset,
-        # the workflow still runs and simply skips the join (see
-        # pyseer_annotate_results). gene_significant is a subset of
-        # gene_results (same variants, same columns), so it is not annotated
-        # separately - filter gene_results_annotated for the rows of
-        # interest instead.
+        # Gene/module-name annotation join, applied to gene_results and to the
+        # covariate_combinations long-format table. Left unset, the join is skipped.
+        # gene_significant is a subset of gene_results, so it is not annotated
+        # separately; filter gene_results_annotated instead.
         File?           annotation_table
         String          annotation_id_column         = "Gene"
         String          annotation_name_column        = "Non-unique Gene name"
@@ -65,9 +54,9 @@ workflow pyseer_gwas {
         phylogeny_newick:       "Midpoint-rooted core-genome phylogeny (Newick), used only to build the kinship matrix"
         presence_absence_rtab:  "block_id x isolate 0/1 matrix - Panaroo's gene_presence_absence.Rtab, or a module Rtab from a pangenome-network decomposition"
         phenotype_tsv:          "Two columns: sample_id\\tphenotype_value"
-        covariates_file:        "Tab-separated: sample_id, then one named column per covariate (e.g. RST, OspC, MLST, BAPS)"
+        covariates_file:        "Tab-separated: sample_id, then one named column per covariate (e.g. MLST, BAPS)"
         use_covariates:         "pyseer --use-covariates value, applied jointly across every covariates_file column named here"
-        covariate_combinations: "Groups of covariates_file column names to test together, one group per pyseer run, each producing its own result file under covariate_scan_results. A bare name is a single-covariate run (e.g. 'BAPS'); '+' joins several into one run (e.g. 'RST+OspC+BAPS'). Deliberately not an all-combinations search - see README for why loading every column jointly is a real degrees-of-freedom risk, not just a style choice."
+        covariate_combinations: "Groups of covariates_file column names to test together, one group per pyseer run, each producing its own result file under covariate_scan_results. A bare name is a single-covariate run (e.g. 'BAPS'); '+' joins several into one run (e.g. 'MLST+BAPS'). Not an all-combinations search; see the README."
         run_lineage_effects:    "Report per-lineage effects as a separate, minimal-input pyseer call, not folded into the main association (default = false). The distance matrix pyseer's --lineage requires is derived automatically from phylogeny_newick - nothing extra to supply."
         lineage_clusters:       "Two columns sample_id\\tcluster_id (e.g. BAPS) for --lineage-clusters. Omit to use pyseer's MDS-derived lineages."
         annotation_table:       "Panaroo/Roary gene_presence_absence.csv, or an equivalent module-annotation table, for the name/annotation join"
@@ -97,9 +86,8 @@ workflow pyseer_gwas {
             docker                 = docker
     }
 
-    # Lineage effects are deliberately their own call, against a minimal
-    # slice of presence_absence_rtab, not folded into pyseer_association's
-    # full-scale --lmm run - see pyseer_lineage_effects's meta.description.
+    # Lineage effects are their own call, against a minimal slice of
+    # presence_absence_rtab, not part of the full-scale --lmm run.
     if (run_lineage_effects) {
         call pyseer_tasks.pyseer_lineage_effects {
             input:
@@ -125,10 +113,7 @@ workflow pyseer_gwas {
                 docker            = docker
         }
 
-        # Same join, same annotation_table, against the covariate_combinations
-        # long-format table - id_column still matches on the "variant" column
-        # pyseer_annotate_results looks for, regardless of the extra
-        # "covariates" column covariate_scan_combined carries.
+        # Same join against the covariate_combinations long-format table.
         call pyseer_tasks.pyseer_annotate_results as annotate_covariate_scan {
             input:
                 pyseer_results    = pyseer_association.covariate_scan_combined,

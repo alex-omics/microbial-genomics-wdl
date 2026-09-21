@@ -19,7 +19,7 @@ task name_summary {
     }
 
     meta {
-        description: "Write a table to a recognisably named file. write_tsv alone emits a temp-named file that lands in the bucket as something like 'tmpzsaunsvb', so routing it through a task is what gives the deliverable a name you can find."
+        description: "Write a table to a named file. write_tsv alone produces a temp-named file (e.g. 'tmpzsaunsvb') in the bucket; routing it through a task gives the output a findable name."
     }
 
     command <<<
@@ -61,7 +61,7 @@ task validate_panel {
     }
 
     meta {
-        description: "Fail fast on a mis-specified panel, and emit sanitised sample IDs. Positional matching across several arrays is easy to get wrong and normally surfaces as an index error deep inside a scatter, after the expensive stages have already been billed. Sample IDs are also checked for characters that would break Bakta locus tags or Panaroo's column headers, since that failure otherwise appears only at the ortholog join at the very end of the run."
+        description: "Fail fast on a mis-specified panel and emit sanitised sample IDs. Positional matching across several arrays is easy to get wrong and otherwise surfaces as an index error inside a scatter, after the expensive stages have run. IDs are also checked for characters that would break Bakta locus tags or Panaroo column headers."
     }
 
     command <<<

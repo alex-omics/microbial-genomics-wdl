@@ -1,12 +1,7 @@
 # assembly_qc
 
-Assess the quality and completeness of one or more assembled microbial genomes and
-collapse everything into a **single summary table**.
-
-The problem this solves: assembly statistics and the assembly FASTA usually end up
-decoupled across Terra tables, and re-sequenced isolates multiply the number of places
-you have to look. Point this workflow at a pile of assemblies gathered from anywhere and
-get one TSV back.
+Assess the quality and completeness of assembled microbial genomes and collapse the results
+into a **single summary table**, one row per assembly.
 
 ## Tools
 
@@ -16,53 +11,49 @@ get one TSV back.
 | BUSCO 5.7.1 | Completeness against single-copy orthologs | `aarvani1/busco-prokaryota:5.8.0` |
 | CheckM2 1.1.0 | Completeness and **contamination** via ML models | `staphb/checkm2:1.1.0` |
 
-BUSCO and CheckM2 both report completeness but disagree usefully: BUSCO counts marker
-genes for a specific clade, CheckM2 predicts from a model trained across genomes and is
-the one that will tell you an assembly is *contaminated*.
+BUSCO and CheckM2 both report completeness but answer different questions: BUSCO counts marker
+genes for a specific clade, while CheckM2 predicts from a model trained across genomes and can
+flag a *contaminated* assembly.
 
 ## Inputs
 
 | Input | Type | Notes |
 | ----- | ---- | ----- |
 | `assemblies` | `Array[File]` | **Required.** Assembly FASTAs (`.fasta`/`.fa`/`.fna`, optionally gzipped) |
-| `sample_names` | `Array[String]?` | Optional; positionally matched. Defaults to filenames with the extension stripped |
+| `sample_names` | `Array[String]?` | Positionally matched. Defaults to filenames with the extension stripped |
 | `busco_lineage` | `String` | Dataset name, or `auto` (default) to place each assembly independently |
-| `busco_lineage_tarball` | `File?` | A lineage `.tar.gz` not baked into the image |
+| `busco_lineage_tarball` | `File?` | A lineage `.tar.gz` not included in the image |
 | `checkm2_db` | `File?` | **Recommended.** See below |
 | `reference_genome` | `File?` | Enables QUAST comparative mode |
 | `run_quast` / `run_busco` / `run_checkm2` | `Boolean` | All default `true` |
 
 ### BUSCO lineages
 
-The `busco-prokaryota:5.8.0` image carries the **complete OrthoDB v10 prokaryote set —
-99 datasets** — plus the placement files needed for `--auto-lineage-prok`. Everything
-runs fully offline; the task passes `--offline` unconditionally.
+The `busco-prokaryota:5.8.0` image includes the complete OrthoDB v10 prokaryote set (99
+datasets) and the placement files for `--auto-lineage-prok`. It runs fully offline.
 
-`busco_lineage = "auto"` lets BUSCO place each assembly in the prokaryote tree and pick
-its own dataset, which is what you want for a mixed bag of isolates. The dataset it
-actually chose comes back in the `busco_lineage` column, so the number is never
-uninterpretable. Set an explicit name (e.g. `spirochaetales_odb10`) when you know the
-clade and want it uniform across samples.
+With `busco_lineage = "auto"`, BUSCO places each assembly in the prokaryote tree and chooses
+its own dataset, which suits a mixed set of isolates. The dataset chosen is reported in the
+`busco_lineage` column. Set an explicit name (e.g. `spirochaetales_odb10`) to use one dataset
+for every sample.
 
-> The image pins odb10 deliberately. Upstream now also publishes ~740 OrthoDB v12
-> datasets, which BUSCO 5.7.x cannot consume — `busco --download prokaryota` against the
-> live manifest pulls odb12 and fails. See `docker/busco-prokaryota/fetch_busco_data.sh`.
+The image uses odb10 because BUSCO 5.7.x cannot use OrthoDB v12 datasets. See
+`docker/busco-prokaryota/fetch_busco_data.sh`.
 
 ### The CheckM2 database
 
-`staphb/checkm2` ships **without** the ~3 GB DIAMOND database. Stage it in GCS once:
+`staphb/checkm2` does not include the ~3 GB DIAMOND database. Download it once:
 
 ```bash
 docker run --rm -v "$PWD:/db" staphb/checkm2:1.1.0 checkm2 database --download --path /db
 ```
 
-Then upload `CheckM2_database/uniref100.KO.1.dmnd` to your bucket and pass that path as
-`checkm2_db`. If you omit it, **every scattered task downloads its own copy**, which is
-slow and depends on an external host staying up.
+Upload `CheckM2_database/uniref100.KO.1.dmnd` to your bucket and pass its path as `checkm2_db`.
+Without it, every scattered task downloads its own copy.
 
 ## Outputs
 
-`summary_tsv` is the deliverable — one row per assembly:
+`summary_tsv` has one row per assembly:
 
 ```
 sample  quast_contigs  quast_total_length  quast_largest_contig  quast_n50  quast_l50
@@ -71,9 +62,9 @@ busco_fragmented_pct  busco_missing_pct  busco_n_markers  busco_lineage
 checkm2_completeness  checkm2_contamination  checkm2_model  checkm2_coding_density
 ```
 
-Disabled tools leave `NA` rather than dropping columns, so the table stays rectangular.
-Per-sample reports (`quast_report_html`, `busco_summary_txt`, `busco_full_table`,
-`checkm2_report_tsv`) come back as arrays for when a row looks wrong and you need detail.
+Columns for disabled tools are `NA`, so the table stays rectangular. Per-sample reports
+(`quast_report_html`, `busco_summary_txt`, `busco_full_table`, `checkm2_report_tsv`) are
+returned as arrays.
 
 ## Running
 

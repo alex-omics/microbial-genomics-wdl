@@ -147,14 +147,14 @@ task modkit_find_motifs {
         bedmethyl:       "Uncompressed bedMethyl from modkit_pileup"
         sample_name:     "Some identifier for naming outputs"
         reference_fasta: "The same reference the pileup was called against"
-        cpu:             "Number of CPUs delegated to task. modkit's own docs: the seed search 'takes advantage of parallelism at nearly every step and hugely benefits from running with as many threads as possible' -- their own example uses --threads 32, which is why this default is higher than the rest of this pipeline's tasks (default = 32)"
+        cpu:             "Number of CPUs delegated to task. modkit's motif search is heavily parallel and benefits from many threads, so this default is higher than the other tasks (default = 32)"
         mem_gb:          "Amount of memory in GB delegated to task (default = 32)"
         disk_gb:         "Amount of disk space in GB delegated to task (default = 100)"
         docker:          "Container image"
     }
 
     meta {
-        description: "De novo discovery of methylated sequence motifs. In bacteria these correspond to restriction-modification system recognition sites, so the motif inventory is effectively a readout of which MTases the isolate carries — which is the control you need before attributing any cross-isolate methylation difference to regulation. This can run for an hour or more on a deeply-covered genome and has no checkpointing, so a mid-run preemption forces a full restart -- see runtime.preemptible."
+        description: "De novo discovery of methylated sequence motifs. In bacteria these correspond to restriction-modification recognition sites, so the motif inventory reflects which MTases the isolate carries. Can run for an hour or more on a deeply covered genome with no checkpointing, so it is not preemptible."
     }
 
     command <<<

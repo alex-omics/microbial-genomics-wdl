@@ -24,12 +24,12 @@ task match_samples_to_references {
         sample_reference_map:    "Optional two-column TSV (sample_id, reference_id; no header) that overrides name matching for the samples it lists. Anything not listed still goes through name matching."
         max_strip_depth:         "How many replicate suffixes may be peeled off a sample name while looking for its reference (default = 1). Deliberately low: each extra level makes a wrong-but-existing match more likely."
         replicate_regex:         "Optional Python regex, matched at the END of a sample name, that replaces the built-in replicate-suffix grammar. Use this for a lab-specific convention the defaults do not cover."
-        ortholog_table:          "Optional Panaroo gene_presence_absence.csv that was supplied rather than built. Checked here, up front, so a bad table fails the run before any alignment rather than at the very end. Not needed for the workflow to build its own."
+        ortholog_table:          "Optional Panaroo gene_presence_absence.csv that was supplied rather than built. Checked up front so a bad table fails the run before any alignment."
         docker:                  "Container image"
     }
 
     meta {
-        description: "Resolve each RNA-seq sample to the assembly it should be aligned against, and fail fast if any cannot be resolved. Replicates are usually named as the isolate plus a suffix (1/2/3, a/b/c, rep2, ...), so a sample is matched by exact name first, then by peeling replicate suffixes off its name until it lands on a name that is actually in reference_ids. Matching is only ever against real reference names and never falls through to a guess: an unmatched sample stops the run before any alignment is billed. Emits the mapping as a table so every assignment can be audited, plus the indices the workflow uses to scatter over only the references that are actually used."
+        description: "Resolve each RNA-seq sample to the assembly it should be aligned against, and fail fast if any cannot be resolved. A sample is matched by exact name first, then by peeling replicate suffixes (1/2/3, a/b/c, rep2, ...) until it reaches a name in reference_ids. Only real reference names are matched; an unmatched sample stops the run before any alignment. Emits the mapping as an auditable table, plus the indices the workflow uses to scatter over only the references in use."
     }
 
     command <<<

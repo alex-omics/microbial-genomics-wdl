@@ -25,7 +25,7 @@ task methylation_orthologs {
     }
 
     meta {
-        description: "Collapse per-isolate methylation calls onto pangenome ortholog groups, producing a gene-by-isolate matrix. Absent genes are emitted as NA rather than 0, because a gene an isolate does not carry has undefined methylation — conflating that with an unmethylated gene would manufacture differences that are really presence/absence."
+        description: "Collapse per-isolate methylation calls onto pangenome ortholog groups, giving a gene-by-isolate matrix. A gene an isolate lacks is NA, not 0: its methylation is undefined, and conflating the two would create differences that are really presence/absence."
     }
 
     command <<<

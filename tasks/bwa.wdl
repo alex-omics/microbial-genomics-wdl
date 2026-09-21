@@ -26,7 +26,7 @@ task bwa_index {
     }
 
     meta {
-        description: "Build a BWA index for one reference and return it as a single bundle (FASTA + index files). Bundling keeps a reference and its index together as one File, so a per-sample alignment task can never be handed an index that belongs to a different genome."
+        description: "Build a BWA index for one reference and return it as a single bundle (FASTA + index files), so a per-sample alignment can never be given an index that belongs to a different genome."
     }
 
     command <<<

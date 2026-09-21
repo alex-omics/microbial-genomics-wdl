@@ -2,14 +2,8 @@ version: 1.2
 
 # Dockstore registration for microbial-genomics-wdl.
 #
-# All workflows are listed here even though each currently lives on its own
-# feature branch. The `filters.branches` list is per-workflow, so Dockstore only
-# looks for a descriptor on branches where it actually exists — registering
-# assembly_qc does not make Dockstore go hunting for another workflow's
-# descriptor on the assembly-qc branch, and vice versa.
-#
-# Keeping one identical file on every branch also means this does not conflict
-# when the feature branches eventually merge into main.
+# `filters.branches` is per-workflow, so Dockstore only looks for a descriptor on
+# the branches listed for it.
 #
 # Paths are absolute from the repository root and must begin with a slash.
 
