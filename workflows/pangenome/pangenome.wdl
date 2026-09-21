@@ -6,7 +6,7 @@ import "../../tasks/panaroo.wdl" as panaroo_task
 workflow pangenome {
 
     meta {
-        description: "Build a pangenome across a panel of assemblies with Bakta and Panaroo, and stop there. Deliberately produces no alignment and no tree: gene presence/absence and ortholog groups are useful on their own, and coupling them to phylogenetics forces every pangenome run to pay for a tree search that may not converge on fragmented input."
+        description: "Build a pangenome across a panel of assemblies with Bakta and Panaroo, and stop there. No alignment and no tree: presence/absence and ortholog groups are useful on their own, and a tree search on fragmented input may not converge."
         author: "Alex Arvanitis"
     }
 

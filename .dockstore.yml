@@ -2,14 +2,8 @@ version: 1.2
 
 # Dockstore registration for microbial-genomics-wdl.
 #
-# All workflows are listed here even though each currently lives on its own
-# feature branch. The `filters.branches` list is per-workflow, so Dockstore only
-# looks for a descriptor on branches where it actually exists — registering
-# assembly_qc does not make Dockstore go hunting for another workflow's
-# descriptor on the assembly-qc branch, and vice versa.
-#
-# Keeping one identical file on every branch also means this does not conflict
-# when the feature branches eventually merge into main.
+# `filters.branches` is per-workflow, so Dockstore only looks for a descriptor on
+# the branches listed for it.
 #
 # Paths are absolute from the repository root and must begin with a slash.
 
@@ -19,8 +13,6 @@ workflows:
     subclass: WDL
     primaryDescriptorPath: /workflows/assembly_qc/assembly_qc.wdl
     readMePath: /workflows/assembly_qc/README.md
-    testParameterFiles:
-      - /tests/assembly_qc_terra_inputs.json
     authors:
       - name: Alex Arvanitis
         email: aarvanitis1@mgh.harvard.edu
@@ -59,8 +51,6 @@ workflows:
     subclass: WDL
     primaryDescriptorPath: /workflows/multimodal_gwas/wf_multimodal_gwas.wdl
     readMePath: /docs/workflows/multimodal_gwas.md
-    testParameterFiles:
-      - /tests/multimodal_gwas/tier1_smoke_test.inputs.json
     authors:
       - name: Alex Arvanitis
         email: aarvanitis1@mgh.harvard.edu
@@ -87,8 +77,6 @@ workflows:
     subclass: WDL
     primaryDescriptorPath: /workflows/dna_methylation_calling/dna_methylation_calling.wdl
     readMePath: /workflows/dna_methylation_calling/README.md
-    testParameterFiles:
-      - /tests/dna_methylation_calling_inputs.json
     authors:
       - name: Alex Arvanitis
         email: aarvanitis1@mgh.harvard.edu
@@ -101,8 +89,6 @@ workflows:
     subclass: WDL
     primaryDescriptorPath: /workflows/pangenome/pangenome.wdl
     readMePath: /workflows/pangenome/README.md
-    testParameterFiles:
-      - /tests/pangenome_inputs.json
     authors:
       - name: Alex Arvanitis
         email: aarvanitis1@mgh.harvard.edu

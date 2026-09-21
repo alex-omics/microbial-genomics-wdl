@@ -17,7 +17,7 @@ task checkm2 {
     parameter_meta {
         assembly:            "FASTA file containing assembled genome to assess completeness and contamination of"
         sample_name:         "Some identifier for naming outputs"
-        checkm2_db:          "CheckM2 DIAMOND database (uniref100.KO.1.dmnd, ~3 GB). Strongly recommended: stage this in GCS once and pass it here. If omitted, the task downloads it at runtime, which is slower and depends on an external host."
+        checkm2_db:          "CheckM2 DIAMOND database (uniref100.KO.1.dmnd, ~3 GB). Recommended: stage it once in your bucket and pass it here. Otherwise the task downloads it at runtime, which is slower and depends on an external host."
         force_general_model: "Force the general (gradient boost) model instead of letting CheckM2 choose (default = false)"
         low_memory:          "Reduce DIAMOND block size to cut RAM use at the cost of runtime (default = false)"
         cpu:                 "Number of CPUs delegated to task (default = 8)"

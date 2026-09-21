@@ -25,25 +25,25 @@ task panaroo {
     parameter_meta {
         gff3s:                "Per-isolate Bakta GFF3s. Panaroo needs each GFF to carry its own sequence; if the ##FASTA block is absent it is appended from the matching entry in fnas."
         fnas:                 "Per-isolate assembly FASTAs from Bakta, positionally matched to gff3s"
-        sample_names:         "Optional isolate names, positionally matched to gff3s. Panaroo labels each isolate's column in gene_presence_absence.csv after its GFF filename, so a GFF supplied under an arbitrary name would produce a column that no downstream step can find. Supplying names makes the label independent of the filename. Omitted, the filename (minus .gff3) is used, which is what Bakta's own output already gives."
+        sample_names:         "Optional isolate names, positionally matched to gff3s. Panaroo labels each isolate's column in gene_presence_absence.csv after its GFF filename; supplying names makes the label independent of the filename. Omitted, the filename (minus .gff3) is used."
         clean_mode:           "Panaroo's error-correction aggressiveness: strict, moderate, or sensitive. Complete ONT assemblies justify 'strict'; loosen it only for fragmented or contaminated input (default = strict)"
         core_threshold:       "Fraction of isolates a gene must appear in to count as core (default = 0.95)"
         seq_id:               "Sequence identity threshold for initial clustering, panaroo -c (default = 0.95)"
         family_threshold:     "Family-level sequence identity threshold, panaroo -f (default = 0.7)"
         refind_mode:          "Gene refinding aggressiveness: default, strict, or off (default = default)"
-        merge_paralogs:       "Collapse paralogous families into one group. Genuinely contested, so set it per run. AGAINST: efflux systems carry real paralogues, and merging fuses distinct genes into one group, averaging away per-gene differences. FOR: Panaroo over-splits in practice, and over-splitting is the worse failure here — one real gene scattered across three groups makes every isolate look like it lacks two of them, manufacturing presence/absence artifacts that the ortholog matrix reports as NA. Over-splitting is driven mainly by fragmented assemblies and annotation noise, so it bites hardest on large mixed-quality panels and least on complete ONT assemblies of a single species. Left false to match Panaroo's own default; flip it on if the pangenome looks fragmented (default = false)"
+        merge_paralogs:       "Collapse paralogous families into one group. Set per run. Against: real paralogues (e.g. efflux systems) are fused into one group, averaging away per-gene differences. For: Panaroo can over-split, scattering one gene across several groups so that isolates look like they lack it, which appears as NA in an ortholog matrix. Over-splitting is worst on large, mixed-quality panels. Default matches Panaroo's own (false)."
         remove_invalid_genes: "Drop gene calls failing basic validity checks (default = true)"
-        alignment:            "Optionally 'core' or 'pan' to also emit gene alignments. Left unset by default — the ortholog mapping needed downstream comes from gene_presence_absence.csv, which Panaroo produces without invoking the aligner at all. Leaving it unset also avoids the alignment code path entirely."
+        alignment:            "Optionally 'core' or 'pan' to also emit gene alignments. Unset by default: gene_presence_absence.csv does not need the aligner."
         aligner:              "Aligner to use when alignment is set: mafft, prank, or clustal. Ignored otherwise."
         cpu:                  "Number of CPUs delegated to task (default = 16)"
-        mem_gb:               "Memory in GB. Sized for a panel of a few dozen complete assemblies. Scale up hard for genus-level panels — graph construction is memory-hungry and running out mid-build costs the whole run plus the retry, which is far more expensive than the extra RAM (default = 64)"
+        mem_gb:               "Memory in GB. Sized for a few dozen complete assemblies. Scale up for genus-level panels: graph construction is memory-hungry, and running out mid-build wastes the whole run (default = 64)"
         disk_gb:              "Amount of disk space in GB delegated to task (default = 200)"
         preemptible:          "Preemptible attempts. Defaults to 0 because this is the panel-wide aggregation step and a preemption late in a long graph build wastes the whole run (default = 0)"
         docker:               "Container image"
     }
 
     meta {
-        description: "Build a pangenome across the isolate panel and, with it, the ortholog groups that let independently-assembled genomes be compared to each other. Independent assemblies have independent locus tags, so orthology — not coordinates — is the only usable cross-isolate join key."
+        description: "Build a pangenome across the isolate panel and the ortholog groups that let independently assembled genomes be compared. Independent assemblies have independent locus tags, so orthology, not coordinates, is the cross-isolate join key."
     }
 
     command <<<

@@ -15,7 +15,7 @@ import "../../tasks/utils.wdl" as utils
 workflow dna_methylation_calling {
 
     meta {
-        description: "Per-isolate bacterial methylation calling from ONT modified-basecalled BAMs. Each isolate's reads are mapped to its OWN assembly, pileup'd with modkit, scanned for methylated motifs, and joined to a Bakta annotation of that same assembly. Self-mapping is deliberate: for an organism with substantial accessory genome and frequent rearrangement, no single reference is adequate, and motif discovery against a foreign reference reads sequence context that the isolate does not actually have."
+        description: "Per-isolate bacterial methylation calling from ONT modified-basecalled BAMs. Each isolate's reads are mapped to its own assembly, piled up with modkit, scanned for methylated motifs, and joined to a Bakta annotation of the same assembly. Self-mapping is deliberate: with a large accessory genome and frequent rearrangement no single reference is adequate, and motif discovery against a foreign reference reads sequence context the isolate does not have."
         author: "Alex Arvanitis"
     }
 
@@ -24,19 +24,15 @@ workflow dna_methylation_calling {
         Array[File]     assemblies
         Array[String]?  sample_names
 
-        # Trusted proteins for Bakta's first-pass CDS assignment. Supplying the
-        # PAO1 proteome transfers PAO1 gene names and products onto each
-        # isolate's own genes, which is what makes independently-annotated
-        # isolates comparable without forcing them into shared coordinates.
+        # Trusted proteins for Bakta's first-pass CDS assignment (e.g. a reference
+        # proteome), transferring reference gene names onto each isolate's genes.
         File?           proteins
         File?           bakta_db
 
-        # Reuse annotations already produced elsewhere (e.g. TheiaProk ONT's
-        # own Bakta step) instead of re-running Bakta here. All three must be
-        # supplied together, positionally matched to modbams/assemblies; if
-        # any is omitted, Bakta runs fresh as usual. Re-running Bakta with a
-        # full external database is the single most expensive, slowest stage
-        # in this workflow -- skip it whenever the outputs already exist.
+        # Reuse existing Bakta annotations instead of re-running Bakta. All three
+        # must be supplied together, positionally matched to modbams/assemblies;
+        # if any is omitted, Bakta runs. Bakta with a full database is the slowest
+        # stage of this workflow.
         Array[File]?    bakta_gff3s
         Array[File]?    bakta_faas
         Array[File]?    bakta_fnas
@@ -45,10 +41,9 @@ workflow dna_methylation_calling {
         Boolean         run_find_motifs   = true
         Boolean         run_pangenome     = true
 
-        # REBASE homology identification. Both files must be supplied to run
-        # it -- stage them as GCS inputs rather than baking into an image or
-        # committing to the repo (MPore is GPL-3.0, and REBASE carries its
-        # own terms; a runtime input sidesteps redistribution questions).
+        # REBASE homology identification. Both files must be supplied to run it.
+        # They are inputs rather than part of the image or repo because REBASE
+        # carries its own redistribution terms.
         File?           rebase_goldset_fasta
         File?           rebase_motif_tsv
         String          rebase_evalue      = "1e-25"
@@ -103,29 +98,29 @@ workflow dna_methylation_calling {
 
     parameter_meta {
         modbams:            "Modified-basecalled BAMs, one per isolate, carrying MM/ML tags"
-        assemblies:         "Each isolate's own assembly, positionally matched to modbams. Produced upstream (TheiaProk ONT, Autocycler, etc.) — this workflow does not assemble."
+        assemblies:         "Each isolate's own assembly, positionally matched to modbams. This workflow does not assemble."
         sample_names:       "Optional labels, positionally matched to modbams. If omitted, names are derived from each filename."
         proteins:           "FASTA of trusted proteins for Bakta --proteins, e.g. the PAO1 proteome"
-        bakta_db:           "Optional .tar.gz of the full Bakta database. Omitted, the light database baked into the staphb image is used. Ignored entirely when bakta_gff3s/bakta_faas/bakta_fnas are supplied, since Bakta never runs in that case."
+        bakta_db:           "Optional .tar.gz of the full Bakta database. Omitted, the light database in the image is used. Ignored when bakta_gff3s/bakta_faas/bakta_fnas are supplied."
         bakta_gff3s:        "Pre-computed Bakta GFF3s, positionally matched to modbams/assemblies, to skip re-running Bakta. Must be supplied together with bakta_faas and bakta_fnas."
         bakta_faas:         "Pre-computed Bakta protein FASTAs, positionally matched to modbams/assemblies. Must be supplied together with bakta_gff3s and bakta_fnas."
         bakta_fnas:         "Pre-computed Bakta nucleotide FASTAs (as Bakta itself emits them, e.g. with --keep-contig-headers), positionally matched to modbams/assemblies. Must be supplied together with bakta_gff3s and bakta_faas."
         run_bakta:          "Annotate each assembly with Bakta. Turn off only if supplying annotations another way (default = true)"
         run_find_motifs:    "Per-isolate de novo motif discovery. The motif inventory is a primary characterisation axis here, effectively reporting which restriction-modification systems each isolate carries (default = true)"
-        run_pangenome:      "Build a pangenome across the panel and collapse methylation onto ortholog groups. This is what makes independently-assembled isolates comparable; without it the outputs are a per-isolate catalogue only (default = true)"
+        run_pangenome:      "Build a pangenome across the panel and collapse methylation onto ortholog groups. This is what makes independently assembled isolates comparable; without it the outputs are a per-isolate catalogue (default = true)"
         panaroo_clean_mode: "Panaroo error-correction mode: strict, moderate, or sensitive. Complete ONT assemblies justify 'strict' (default = strict)"
         core_threshold:     "Fraction of isolates a gene must appear in to be called core (default = 0.95)"
         min_coverage:       "Minimum Nvalid_cov for a site to be counted or annotated (default = 10)"
-        min_percent:        "Minimum percent-modified for a site to count as methylated. The value is unsettled and worth tuning against the bacterial literature; re-thresholding re-runs only annotation and the ortholog join, not alignment, pileup, Bakta or Panaroo (default = 50.0)"
+        min_percent:        "Minimum percent-modified for a site to count as methylated. Re-thresholding reruns only annotation and the ortholog join (default = 50.0)"
         min_mod_reads:      "Minimum reads actually carrying the modification. Decouples the percent floor from depth, so min_percent can be lowered to catch partial methylation without admitting two-read calls (default = 3)"
-        min_read_length:    "Reads shorter than this are dropped before alignment. 500 clears the short-fragment noise (adapter remnants, truncated translocations) commonly present in a raw modBAM while staying below the ~1000bp floor long-read assemblers use for a different job (overlap detection) than this workflow's (methylation coverage, where a shorter-but-real read is still worth keeping) (default = 500)"
+        min_read_length:    "Reads shorter than this are dropped before alignment, removing the short-fragment noise common in a raw modBAM while keeping shorter reads that still contribute coverage (default = 500)"
         min_mapped_percent: "Mapping-rate floor, evaluated AFTER the length filter, as a guard against mismatched modbam/assembly pairs (default = 85.0)"
         flank_upstream:     "Bases upstream of each CDS treated as putative promoter region (default = 300)"
         trim_to_intergenic: "Trim upstream windows that run into neighbouring genes (default = true)"
         rebase_goldset_fasta:      "REBASE Gold Standard protein set for MTase homology identification. Both this and rebase_motif_tsv must be supplied to run it; omitting either skips REBASE cleanly rather than failing."
         rebase_motif_tsv:          "REBASE enzyme -> recognition motif -> modification type table, keyed on rebase_goldset_fasta's headers"
         rebase_evalue:             "BLASTP e-value cutoff for a REBASE homology call, as a String -- a Float this small renders as the literal text 0.000000 in WDL's interpolation, which blastp rejects (default = \"1e-25\")"
-        run_motif_landscape:       "Test find-motifs' and REBASE's candidate motifs against this isolate's own data (enrichment + within-genome heterogeneity), then summarise variability across the panel by motif and by gene. Purely descriptive -- no phenotype groups or MICs required (default = true)"
+        run_motif_landscape:       "Test de novo and REBASE candidate motifs against this isolate's own data (enrichment and within-genome heterogeneity), then summarise variability across the panel by motif and by gene. Descriptive only; needs no phenotype data (default = true)"
         heterogeneous_low_cutoff:  "Below this percent-modified, a motif occurrence counts as 'low' in the heterogeneity summary -- meaningful relative to the panel's typical housekeeping level, usually near 100 (default = 50.0)"
         highlight_genes:           "Case-insensitive substrings (e.g. ['mex','opr','amp','nal']) to flag in the gene-level tier-3 table. A sort/flag convenience, not a filter -- every gene is still reported."
     }

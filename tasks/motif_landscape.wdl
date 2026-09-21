@@ -107,12 +107,12 @@ task motif_landscape {
     }
 
     parameter_meta {
-        bedmethyl:                "UNFILTERED bedMethyl from modkit_pileup. Deliberately not the coverage/percent-filtered table -- the enrichment test needs the true genome-wide background rate, which a pre-filtered table would already have thrown away."
+        bedmethyl:                "Unfiltered bedMethyl from modkit_pileup. The enrichment test needs the true genome-wide background rate, which a coverage/percent-filtered table would have discarded."
         motif_list:               "Output of build_motif_list: one (motif, mod_code) pair per row"
         sample_name:              "Some identifier for naming outputs"
         reference_fasta:          "This isolate's own assembly, in the same coordinates as bedmethyl"
         min_coverage:             "Minimum Nvalid_cov for a site to be included in either the in-motif or background set (default = 10)"
-        heterogeneous_low_cutoff: "A motif occurrence is counted as 'low' in the heterogeneity summary if its representative percent-modified falls below this. Meaningful only relative to the panel's typical housekeeping level, which is usually near 100 (default = 50.0)"
+        heterogeneous_low_cutoff: "A motif occurrence counts as 'low' in the heterogeneity summary if its representative percent-modified falls below this. Interpret relative to the panel's typical housekeeping level, usually near 100 (default = 50.0)"
         cpu:                      "Number of CPUs delegated to task (default = 4)"
         mem_gb:                   "Amount of memory in GB delegated to task (default = 16)"
         disk_gb:                  "Amount of disk space in GB delegated to task (default = 50)"
@@ -120,7 +120,7 @@ task motif_landscape {
     }
 
     meta {
-        description: "Test each candidate motif against this isolate's own methylation data. Tier 1: is methylation at the motif's genomic occurrences elevated over the genome-wide background for that base (log2 enrichment, chi-square). Tier 2: are those occurrences uniformly methylated (the RM-housekeeping null) or split into high/low populations, which is the signature of phase variation or a regulator competing for specific copies. Occurrences are located on both strands and IUPAC ambiguity codes are supported; a motif is tested once per position even where it is palindromic, and its reverse complement is not tested separately if identical to the motif itself. This is intentionally coarse at the base level: every base of the matching canonical type (A for 6mA, C for 4mC/5mC) within an occurrence window counts as part of that occurrence, rather than pinning one exact intra-motif position, because REBASE's own position convention could not be verified against source documentation."
+        description: "Test each candidate motif against this isolate's own methylation data. Tier 1: whether methylation at the motif's occurrences is elevated over the genome-wide background for that base (log2 enrichment, chi-square). Tier 2: whether those occurrences are uniformly methylated or split into high and low populations, which suggests phase variation or a regulator competing for specific copies. Occurrences are located on both strands, IUPAC codes are supported, and a motif is tested once per position even where palindromic. Testing is coarse at the base level: every base of the matching canonical type (A for 6mA, C for 4mC/5mC) within an occurrence window counts toward that occurrence, rather than a single intra-motif position."
     }
 
     command <<<

@@ -22,7 +22,7 @@ task bakta {
         assembly:            "Assembly FASTA to annotate"
         sample_name:         "Some identifier for naming outputs"
         bakta_db:            "Optional .tar.gz of the FULL Bakta database. Omit to use the light database baked into the staphb image at /db/db-light, which is smaller and faster but annotates fewer CDS confidently."
-        proteins:            "FASTA of trusted protein sequences for first-pass CDS assignment. Supplying the PAO1 proteome here transfers PAO1 gene names and products onto this isolate's genes, which is what makes per-isolate annotations comparable to each other and to reference-keyed omics data."
+        proteins:            "FASTA of trusted protein sequences for first-pass CDS assignment (e.g. a reference proteome). Transfers reference gene names and products onto this isolate's genes, so per-isolate annotations are comparable."
         genus:               "Genus name for the annotation (default = Pseudomonas)"
         species:             "Species name for the annotation (default = aeruginosa)"
         strain:              "Optional strain name; defaults to sample_name"
