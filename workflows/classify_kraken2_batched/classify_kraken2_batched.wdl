@@ -38,6 +38,7 @@ workflow classify_kraken2_batched {
         String          docker              = "quay.io/broadinstitute/viral-classify:2.5.21.0"
 
         String          summary_basename    = "kraken2_summary"
+        String          terra_table_name    = "sample"
     }
 
     parameter_meta {
@@ -52,6 +53,7 @@ workflow classify_kraken2_batched {
         keep_unclassified:  "When keeping, also retain unclassified reads (default = false)"
         confidence:         "kraken2 --confidence (default = 0.0)"
         samples_per_batch:  "Upper bound on samples per VM. The database is loaded once per batch, so larger batches cost less, but a failed batch reruns entirely (default = 100)"
+        terra_table_name:   "Terra data table the samples come from; names the first column of manifest_tsv (default = sample)"
         mem_gb:             "VM memory in GB; must exceed the uncompressed hash.k2d (default = 128)"
         concurrent_samples: "Samples classified at once per VM; each gets cpu / concurrent_samples threads (default = 8)"
     }
@@ -129,7 +131,21 @@ workflow classify_kraken2_batched {
             basename = summary_basename
     }
 
+    # File -> String keeps the cloud paths, which is what a data table needs.
+    Array[String] bam_paths    = flatten(kraken2_batch.bams)
+    Array[String] report_paths = flatten(kraken2_batch.reports)
+
+    call kraken2_task.build_manifest {
+        input:
+            sample_ids   = validate_panel.sample_ids,
+            bam_paths    = bam_paths,
+            report_paths = report_paths,
+            summary_tsv  = concat_tables.merged,
+            table_name   = terra_table_name
+    }
+
     output {
+        File          manifest_tsv = build_manifest.manifest
         File          summary_tsv = concat_tables.merged
         Array[String] sample_ids  = validate_panel.sample_ids
         Array[File]   reports     = flatten(kraken2_batch.reports)

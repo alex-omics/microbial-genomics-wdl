@@ -213,7 +213,8 @@ pct = lambda n: f"{100 * n / total:.3f}" if total else "NA"
 row = [a.name, total, total - unclassified, unclassified,
        top[0] if top else "NA", top[4] if top else "NA", top[2] if top else "NA",
        pct(top[2]) if top else "NA",
-       kept if filtering else "NA", pct(kept) if filtering else "NA"]
+       kept if filtering else "NA", pct(kept) if filtering else "NA",
+       total - kept if filtering else "NA"]
 with open(a.summary_out, "w") as out:
     out.write("\t".join(str(x) for x in row) + "\n")
 PY
@@ -321,7 +322,7 @@ SH
         xargs -P ~{concurrent} -L 1 bash -c 'run_one "$@"' _ < manifest.tsv
 
         {
-            printf 'sample\ttotal_reads\tclassified_reads\tunclassified_reads\ttop_species_taxid\ttop_species\ttop_species_reads\ttop_species_pct\tkept_reads\tkept_pct\n'
+            printf 'sample\ttotal_reads\tclassified_reads\tunclassified_reads\ttop_species_taxid\ttop_species\ttop_species_reads\ttop_species_pct\tkept_reads\tkept_pct\tremoved_reads\n'
             while read -r f; do cat "${f}"; done < summaries.list
         } > batch_summary.tsv
     >>>
@@ -341,5 +342,61 @@ SH
         disks:          "local-disk ~{disk} SSD"
         preemptible:    preemptible
         maxRetries:     1
+    }
+}
+
+
+task build_manifest {
+
+    input {
+        Array[String]  sample_ids
+        Array[String]  bam_paths
+        Array[String]  report_paths
+        File           summary_tsv
+        String         table_name = "sample"
+        String         basename   = "kraken2_manifest"
+        String         docker     = "ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982"
+    }
+
+    parameter_meta {
+        sample_ids:   "Sample names, in input order"
+        bam_paths:    "Cloud paths of the output BAMs, positionally matched to sample_ids"
+        report_paths: "Cloud paths of the kraken2 reports, positionally matched to sample_ids"
+        summary_tsv:  "Merged per-sample summary table"
+        table_name:   "Terra data table the manifest is for. The first column is entity:<table_name>_id."
+        basename:     "Basename for the emitted TSV, without extension"
+        docker:       "Container image"
+    }
+
+    meta {
+        description: "Join each sample's output BAM and report paths with its summary statistics into one TSV that can be uploaded to a Terra data table, attaching the outputs to the per-sample rows."
+    }
+
+    command <<<
+        set -euo pipefail
+        paste ~{write_lines(sample_ids)} ~{write_lines(bam_paths)} ~{write_lines(report_paths)} > paths.tsv
+
+        awk -F'\t' -v OFS='\t' -v t="~{table_name}" '
+            NR == FNR {
+                rest = $0; sub(/^[^\t]*\t/, "", rest)
+                if (FNR == 1) hdr = rest; else stats[$1] = rest
+                next
+            }
+            FNR == 1 { print "entity:" t "_id", "kraken2_bam", "kraken2_report", hdr }
+            { print $1, $2, $3, stats[$1] }
+        ' ~{summary_tsv} paths.tsv > "~{basename}.tsv"
+    >>>
+
+    output {
+        File manifest = "~{basename}.tsv"
+    }
+
+    runtime {
+        docker:         docker
+        memory:         "2 GB"
+        cpu:            1
+        disks:          "local-disk 10 SSD"
+        preemptible:    1
+        maxRetries:     2
     }
 }

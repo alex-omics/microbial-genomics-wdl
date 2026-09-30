@@ -35,6 +35,7 @@ sample set with `this.samples.<column>` for each reads input.
 | `remove_matching` | `Boolean` | Remove the listed clades instead of keeping them. Default `false` |
 | `keep_unclassified` | `Boolean` | When keeping, retain unclassified reads too. Default `false` |
 | `confidence` | `Float` | kraken2 `--confidence`. Default `0.0` |
+| `terra_table_name` | `String` | Data table the samples come from; names the manifest's first column. Default `sample` |
 | `kraken2_extra_args` | `String` | Passed through, e.g. `--minimum-hit-groups 3` |
 | `samples_per_batch` | `Int` | Default `100` |
 | `mem_gb` / `cpu` / `concurrent_samples` | `Int` | Default `128` / `32` / `8` |
@@ -69,6 +70,7 @@ All per-sample outputs are in input order.
 
 | Output | Notes |
 | ------ | ----- |
+| `manifest_tsv` | Per-sample BAM and report paths plus the summary statistics, for upload to a Terra data table (below) |
 | `summary_tsv` | One row per sample (below) |
 | `sample_ids` | Resolved names, in input order |
 | `reports` | kraken2 report per sample |
@@ -78,12 +80,21 @@ All per-sample outputs are in input order.
 
 ```
 sample  total_reads  classified_reads  unclassified_reads  top_species_taxid  top_species
-top_species_reads  top_species_pct  kept_reads  kept_pct
+top_species_reads  top_species_pct  kept_reads  kept_pct  removed_reads
 ```
 
-Counts are reads for single-end samples and read pairs for paired-end. `kept_reads` and
-`kept_pct` are `NA` when no taxa are given. The kraken2 reports can be passed to Krona
+Counts are reads for single-end samples and read pairs for paired-end. `kept_reads` is the number of reads
+(pairs) in the output BAM, and `removed_reads` is the rest; both, and `kept_pct`, are `NA` when
+no taxa are given. The kraken2 reports can be passed to Krona
 separately; the workflow does not produce plots or per-read assignment files.
+
+### Attaching outputs to sample rows
+
+A run launched on a set writes its outputs to the set, not to each sample. `manifest_tsv` has one
+row per sample: `entity:<terra_table_name>_id`, `kraken2_bam`, `kraken2_report`, then every
+column of `summary_tsv`. In Terra's Data tab, upload it as a TSV (Import Data, upload file);
+rows are matched on the ID, so the new columns are added to your existing samples. If the
+first header does not match your table, edit it before uploading.
 
 ## Running
 
