@@ -38,7 +38,7 @@ sample set with `this.samples.<bam column>` as `reads_bams`.
 
 ### Choosing settings
 
-- **`mem_gb`** must exceed the uncompressed `hash.k2d`, plus a few GB of headroom. If it does
+- **`mem_gb`** must exceed the uncompressed `hash.k2d`, plus a few GB of headroom (the tarball is compressed, so check the extracted size). If it does
   not, every read pages from disk and most of the saving is lost. The task warns when this
   happens.
 - **`samples_per_batch`** trades database loads against blast radius. Larger batches load the
@@ -68,6 +68,8 @@ All per-sample outputs are in input order.
 sample  total_reads  classified_reads  unclassified_reads  top_species_taxid  top_species
 top_species_reads  top_species_pct  kept_reads  kept_pct
 ```
+
+The kraken2 reports can be passed to Krona separately; the workflow does not produce plots or per-read assignment files.
 
 Counts are reads for single-end samples and read pairs for paired-end. `kept_reads` and
 `kept_pct` are `NA` when not filtering.
