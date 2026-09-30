@@ -89,7 +89,9 @@ workflow classify_kraken2_batched {
         scatter (j in range(batch_size)) {
             Int i = b * batch_size + j
             if (i < n) {
-                String batch_name = validate_panel.sample_ids[i]
+                String batch_name   = validate_panel.sample_ids[i]
+                String batch_bam    = "~{batch_name}.bam"
+                String batch_report = "~{batch_name}.kraken2.report.txt"
                 File   batch_r1   = primary[i]
             }
             if (i < n && has_r2) {
@@ -100,6 +102,8 @@ workflow classify_kraken2_batched {
         call kraken2_task.kraken2_batch {
             input:
                 names              = select_all(batch_name),
+                bam_filenames      = select_all(batch_bam),
+                report_filenames   = select_all(batch_report),
                 reads              = select_all(batch_r1),
                 reads_r2           = select_all(batch_r2),
                 bam_input          = defined(reads_bams),

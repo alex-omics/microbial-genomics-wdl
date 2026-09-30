@@ -836,6 +836,13 @@ run_k2 k2_se reads_fastq_r1="${K2}/sampleC.fastq.gz" filter_taxids=10
 check "se fastq: total"                     "40"  "$(col sampleC total_reads)"
 check "se fastq: keep genus A"              "35"  "$(records "$(obam sampleC)")"
 
+# --- Output files must be named statically. A cloud backend copies outputs off the VM
+# from paths it can work out before the task runs; paths read back from a file the
+# task writes are never copied, and miniwdl (which reads the local directory afterwards)
+# cannot tell the difference.
+check "no File output is read from a task-written list" "0" \
+      "$(grep -cE 'Array\[File\].*=.*read_lines' "${REPO}/tasks/kraken2.wdl" | tr -d ' ')"
+
 # --- Contradictory inputs are rejected before any database is touched
 if miniwdl run "${REPO}/workflows/classify_kraken2_batched/classify_kraken2_batched.wdl" \
        kraken2_db_tgz="${K2}/tiny_db.tar.gz" reads_bams="${K2}/sampleA.bam" reads_fastq_r1="${K2}/sampleC.fastq.gz" \

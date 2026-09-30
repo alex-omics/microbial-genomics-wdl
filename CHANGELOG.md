@@ -32,6 +32,7 @@
 - `tests/` - Placeholder and workspace-specific input files, and the live-network `fetch_reads_from_sra` tests
 
 ### Fixed
+- `classify_kraken2_batched` - Output BAMs and reports were never copied off the VM on Terra, because their paths were read from a file written by the task. Output paths are now declared from the inputs
 - `rna_seq_counts` - `-p` without `--countReadPairs` counted each mate separately, doubling every fragment. The pinned images for alignment, duplicate marking and counting could not run (`staphb/bwa` has no samtools; `staphb/picard` and `biocontainers/subread` do not exist on Docker Hub). `ignore_duplicates` now defaults to `false`
 - `tasks/annotate_methylation.wdl` - Sites were filtered on coverage only; now on coverage, percent-modified and modified-read count. Also fixed a column offset that put the feature end coordinate in `feature_strand`
 - `tasks/motif_landscape_summary.wdl` - Motif rows were sorted by a formatted string rather than the numeric value
