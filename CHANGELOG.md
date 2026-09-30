@@ -2,7 +2,7 @@
 
 ## [Unreleased]
 ### Added
-- `workflows/classify_kraken2_batched` - kraken2 classification of many unaligned BAMs with the database loaded once per VM rather than once per sample, plus optional keeping or removal of reads by clade. Emits per-sample reports, filtered BAMs and one summary table
+- `workflows/classify_kraken2_batched` - kraken2 classification of many samples (unaligned BAM, or paired or single-end FASTQ) with the database loaded once per VM rather than once per sample, plus optional keeping or removal of reads by clade, by taxid or name. Emits per-sample reports and BAMs and one summary table
 - `tasks/kraken2.wdl` - Batch kraken2 task sharing one memory-mapped database across concurrent samples
 - `workflows/rna_seq_counts` - Paired-end RNA-seq alignment (BWA-MEM) and featureCounts, with each sample aligned to its own isolate's assembly or to one shared reference. Annotates with Bakta and builds an ortholog table with Panaroo, each skipped if supplied, and emits per-isolate matrices, a long-format table and one ortholog-level matrix
 - `tasks/sample_matching.wdl` - Matches samples to assemblies by name, allowing replicate suffixes (`a/b/c`, `1/2/3`, `rep2`, ...), and fails before alignment if a sample cannot be matched. Also validates a supplied ortholog table

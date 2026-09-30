@@ -2,7 +2,7 @@
 """Regenerate the classify_kraken2_batched fixtures.
 
 A hand-made taxonomy of two genera (A with species A1 and A2, B with species B1)
-plus a host species, a random genome for each, and four unaligned BAMs whose
+plus a host species, a random genome for each, and four unaligned BAMs (and FASTQ copies of the first three) whose
 reads are exact substrings of those genomes or random sequence absent from the
 database, so every read's classification is known in advance. The expected
 counts are written to expected.json.
@@ -10,6 +10,7 @@ counts are written to expected.json.
 Needs docker (kraken2 and samtools run in the image the workflow uses).
 Usage: make_fixtures.py
 """
+import gzip
 import json
 import os
 import random
@@ -92,10 +93,25 @@ with tempfile.TemporaryDirectory() as work:
     os.replace(f"{work}/tiny_db.tar.gz", f"{HERE}/tiny_db.tar.gz")
 
     for sample, (paired, plan) in SAMPLES.items():
+        records = list(sam_records(sample, paired, plan))
         with open(f"{work}/{sample}.sam", "w") as sam:
             sam.write("@HD\tVN:1.6\tSO:unsorted\n")
             sam.write(f"@RG\tID:{sample}\tSM:{sample}\n")
-            sam.write("\n".join(sam_records(sample, paired, plan)) + "\n" if plan else "")
+            sam.write("\n".join(records) + "\n" if plan else "")
+        # The same reads as FASTQ. sampleB's mates carry /1 and /2 name suffixes.
+        suffix = sample == "sampleB"
+        if plan:
+            handles = {}
+            for rec in records:
+                f = rec.split("\t")
+                mate = {"77": "1", "141": "2", "4": "1"}[f[1]]
+                path = f"{HERE}/{sample}_R{mate}.fastq.gz" if paired else f"{HERE}/{sample}.fastq.gz"
+                if path not in handles:
+                    handles[path] = gzip.open(path, "wt", compresslevel=9)
+                name = f[0] + (f"/{mate}" if suffix else "")
+                handles[path].write(f"@{name}\n{f[9]}\n+\n{f[10]}\n")
+            for h in handles.values():
+                h.close()
         docker(work, "samtools", "view", "-b", "-o", f"{sample}.bam", f"{sample}.sam")
         os.replace(f"{work}/{sample}.bam", f"{HERE}/{sample}.bam")
 
