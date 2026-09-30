@@ -6,6 +6,7 @@ WDL workflows for studying the genomes of bacterial and other microbial pathogen
 | -------- | ----------- | --------- |
 | annotate_assembly | Annotate an assembled genome with optional reference input  | 🔜 Planned |
 | [assembly_qc](workflows/assembly_qc) | QUAST + BUSCO + CheckM2 over a set of assemblies, collapsed into one summary table | ✅ Available |
+| [classify_kraken2_batched](workflows/classify_kraken2_batched) | Batched kraken2 classification of many unaligned BAMs against one shared database copy per VM, with optional clade-level keep/remove filtering | ✅ Available |
 | [dna_methylation_calling](workflows/dna_methylation_calling) | Per-isolate ONT methylation calling (each isolate mapped to its own assembly), REBASE MTase homology, and a three-tier descriptive motif landscape across a pangenome | ✅ Available |
 | [fetch_reads_from_sra](workflows/fetch_reads_from_sra) | Fetches a single SRA/ENA/DDBJ run and emits gzip-compressed FASTQ, with the platform and layout it actually extracted | ✅ Available |
 | multimodal_gwas | Use multiple statistical approaches to correlate genes or variants to phenotypes | 🚧 In development |
