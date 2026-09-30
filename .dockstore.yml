@@ -21,6 +21,18 @@ workflows:
         - main
         - feature/assembly-qc-tasks
 
+  - name: classify_kraken2_batched
+    subclass: WDL
+    primaryDescriptorPath: /workflows/classify_kraken2_batched/classify_kraken2_batched.wdl
+    readMePath: /workflows/classify_kraken2_batched/README.md
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/kraken2-batched
+
   - name: fetch_reads_from_sra
     subclass: WDL
     primaryDescriptorPath: /workflows/fetch_reads_from_sra/fetch_reads_from_sra.wdl

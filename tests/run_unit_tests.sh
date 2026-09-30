@@ -13,6 +13,8 @@
 #     the real pyseer image
 #   - rna_seq_counts: sample-to-assembly matching, and the whole workflow on
 #     synthetic isolates with planted per-gene counts
+#   - classify_kraken2_batched: the whole workflow against a tiny kraken2 database,
+#     on BAMs whose reads have planted classifications
 #
 # Requires: miniwdl, docker, python3. All sections run offline once the images
 # are pulled.
@@ -741,6 +743,63 @@ if miniwdl run "${REPO}/tasks/bwa.wdl" --task bwa_index \
 else
     check "GFF/FASTA contig mismatch is rejected" "fail" "fail"
 fi
+
+# --------------------------------------------------------------------------
+echo "classify_kraken2_batched (whole workflow, real kraken2, planted classifications)"
+# Four samples (paired, paired, single-end, empty) against a database of two genera
+# and a host. samples_per_batch=2 forces two batches, so input-order preservation
+# across batches is exercised. See make_fixtures.py for the planted counts.
+K2="${REPO}/tests/fixtures/kraken2_batched"
+export DOCKER_DEFAULT_PLATFORM=linux/amd64   # the kraken2 image is amd64-only
+
+run_k2() {   # tag, then extra key=value inputs
+    local tag="$1"; shift
+    miniwdl run "${REPO}/workflows/classify_kraken2_batched/classify_kraken2_batched.wdl" \
+        reads_bams="${K2}/sampleA.bam" reads_bams="${K2}/sampleB.bam" \
+        reads_bams="${K2}/sampleC.bam" reads_bams="${K2}/sampleD.bam" \
+        kraken2_db_tgz="${K2}/tiny_db.tar.gz" samples_per_batch=2 cpu=4 mem_gb=4 concurrent_samples=2 \
+        "$@" --dir "${WORK}/${tag}" > "${WORK}/${tag}.log" 2>&1 || {
+            echo "  workflow failed; see ${WORK}/${tag}.log"; grep ' ERROR ' "${WORK}/${tag}.log" | tail -n 5 | cut -c1-240; exit 1; }
+    K2RUN="$(ls -d "${WORK}/${tag}"/*_classify_kraken2_batched | tail -1)"
+}
+col() {   # sample column-name -> value, from the summary table
+    awk -F'\t' -v s="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++) if($i==c) k=i} $1==s{print $k}' "${K2RUN}/out/summary_tsv/kraken2_summary.tsv"
+}
+fbam() {   # sample -> a readable copy of its filtered BAM (outputs are symlinks, which a container cannot follow)
+    mkdir -p "${WORK}/k2bams"
+    cp -L "$(find "${K2RUN}/out/filtered_bams" -name "$1.filtered.bam" | head -1)" "${WORK}/k2bams/$1.bam"
+    echo "${WORK}/k2bams/$1.bam"
+}
+nreads() {   # bam -> distinct read names
+    docker run --rm -v "$(dirname "$1"):/d" --entrypoint bash quay.io/broadinstitute/viral-classify:2.5.21.0 \
+        -c "samtools view /d/$(basename "$1") | cut -f1 | sort -u | wc -l" | tr -d ' '
+}
+
+run_k2 k2_classify
+check "rows in input order"               "sampleA sampleB sampleC sampleD" "$(awk 'NR>1{printf "%s%s",(NR>2?" ":""),$1}' "${K2RUN}/out/summary_tsv/kraken2_summary.tsv")"
+check "sampleA total pairs"               "125" "$(col sampleA total_reads)"
+check "sampleA unclassified (random reads)" "25" "$(col sampleA unclassified_reads)"
+check "sampleA top species is SpeciesA1"  "11"  "$(col sampleA top_species_taxid)"
+check "sampleC single-end total"          "40"  "$(col sampleC total_reads)"
+check "sampleD empty BAM total"           "0"   "$(col sampleD total_reads)"
+check "kept_reads is NA without a filter" "NA"  "$(col sampleA kept_reads)"
+check "no filtered BAMs without a filter" "0"   "$(find "${K2RUN}/out" -name '*.filtered.bam' | wc -l | tr -d ' ')"
+
+# Keep the GenusA clade (10): A1 + A2 reads only, found through the genus's descendants.
+run_k2 k2_keep filter_taxids=10
+check "keep genus A: sampleA kept"        "60"  "$(col sampleA kept_reads)"
+check "keep genus A: sampleB kept"        "0"   "$(col sampleB kept_reads)"
+check "keep genus A: sampleC kept"        "35"  "$(col sampleC kept_reads)"
+check "keep genus A: sampleA BAM reads"   "60"  "$(nreads "$(fbam sampleA)")"
+check "keep genus A: paired BAM keeps both mates" "120" "$(docker run --rm -v "${WORK}/k2bams:/d" --entrypoint samtools quay.io/broadinstitute/viral-classify:2.5.21.0 view -c /d/sampleA.bam)"
+check "keep genus A: empty BAM is emitted, empty" "0" "$(nreads "$(fbam sampleD)")"
+
+run_k2 k2_keepunc filter_taxids=10 keep_unclassified=true
+check "keep + unclassified: sampleA kept" "85"  "$(col sampleA kept_reads)"
+
+run_k2 k2_remove filter_taxids=9606 remove_matching=true
+check "remove host: sampleA kept"         "115" "$(col sampleA kept_reads)"
+check "remove host: sampleB kept"         "55"  "$(col sampleB kept_reads)"
 
 # --------------------------------------------------------------------------
 echo
