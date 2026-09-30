@@ -63,6 +63,8 @@ task kraken2_batch {
 
     input {
         Array[String]   names
+        Array[String]   bam_filenames
+        Array[String]   report_filenames
         Array[File]     reads
         Array[File]     reads_r2            = []
         Boolean         bam_input           = false
@@ -83,6 +85,8 @@ task kraken2_batch {
 
     parameter_meta {
         names:               "Sample names, positionally matched to reads. Letters, digits, dot, underscore and hyphen only."
+        bam_filenames:       "Output BAM filename per sample (e.g. name.bam), positionally matched to names. Given as an input so the output paths are known before the task runs."
+        report_filenames:    "Output kraken2 report filename per sample, positionally matched to names"
         reads:               "Unaligned BAMs (bam_input) or FASTQ read 1 files (plain or gzipped)"
         reads_r2:            "FASTQ read 2 files, positionally matched to reads. Empty for BAMs and single-end FASTQ."
         bam_input:           "reads are BAMs. Paired-end is then detected from the read flags; otherwise reads are treated as single-end."
@@ -131,15 +135,15 @@ task kraken2_batch {
         fi
         cat "${DB_DIR}/hash.k2d" "${DB_DIR}/taxo.k2d" > /dev/null
 
-        # name, read 1 or BAM, read 2 ("-" when there is none)
+        # name, read 1 or BAM, read 2 ("-" when there is none), output BAM, output report
         if [ "~{paired_fastq}" = "true" ]; then
             paste ~{write_lines(names)} ~{write_lines(reads)} ~{write_lines(reads_r2)} > manifest.tsv
         else
             paste ~{write_lines(names)} ~{write_lines(reads)} | awk '{print $0 "\t-"}' > manifest.tsv
         fi
-        awk '{print "out/" $1 ".kraken2.report.txt"}' manifest.tsv > reports.list
+        paste manifest.tsv ~{write_lines(bam_filenames)} ~{write_lines(report_filenames)} > manifest.full.tsv
+        mv manifest.full.tsv manifest.tsv
         awk '{print "out/" $1 ".summary.tsv"}' manifest.tsv > summaries.list
-        awk '{print "out/" $1 ".bam"}' manifest.tsv > bams.list
 
         # Applies the taxon filter to one sample's per-read assignments and writes
         # the read names to keep and the sample's summary row.
@@ -209,7 +213,8 @@ pct = lambda n: f"{100 * n / total:.3f}" if total else "NA"
 row = [a.name, total, total - unclassified, unclassified,
        top[0] if top else "NA", top[4] if top else "NA", top[2] if top else "NA",
        pct(top[2]) if top else "NA",
-       kept if filtering else "NA", pct(kept) if filtering else "NA"]
+       kept if filtering else "NA", pct(kept) if filtering else "NA",
+       total - kept if filtering else "NA"]
 with open(a.summary_out, "w") as out:
     out.write("\t".join(str(x) for x in row) + "\n")
 PY
@@ -243,7 +248,7 @@ PY
         cat > process_one.sh <<'SH'
 #!/bin/bash
 set -euo pipefail
-name="$1"; in1="$2"; in2="$3"
+name="$1"; in1="$2"; in2="$3"; bam_out="out/$4"; report_out="out/$5"
 w="tmp/${name}"; mkdir -p "${w}"
 
 # Read files for kraken2: converted from the BAM, or the FASTQ as given.
@@ -266,11 +271,11 @@ if [ "$(head -c2 "${r1}" | od -An -tx1 | tr -d ' \n')" = "1f8b" ]; then gz="--gz
 # kraken2 writes no output file for an empty input
 : > "${w}/assignments.tsv"
 kraken2 --db "${DB_DIR}" --memory-mapping --threads "${THREADS}" --confidence "${CONF}" \
-    ${gz} ${EXTRA} --report "out/${name}.kraken2.report.txt" --output "${w}/assignments.tsv" \
+    ${gz} ${EXTRA} --report "${report_out}" --output "${w}/assignments.tsv" \
     "${reads[@]}" 2> "${w}/kraken2.log"
 if [ "${BAM}" = "true" ]; then rm -f "${w}"/*.fq; fi
 
-python3 summarize.py "${name}" "out/${name}.kraken2.report.txt" "${w}/assignments.tsv" \
+python3 summarize.py "${name}" "${report_out}" "${w}/assignments.tsv" \
     "${w}/keep.txt" "out/${name}.summary.tsv" --taxids "${TAXIDS}" --mode "${MODE}" \
     ${NAMES_ARG} ${KEEPUNC}
 rm -f "${w}/assignments.tsv"
@@ -278,9 +283,9 @@ rm -f "${w}/assignments.tsv"
 # Output BAM: every read, or only those kept by the taxon filter.
 if [ "${BAM}" = "true" ]; then
     if [ "${FILTER}" = "true" ]; then
-        samtools view -b -@ "${THREADS}" -N "${w}/keep.txt" -o "out/${name}.bam" "${in1}"
+        samtools view -b -@ "${THREADS}" -N "${w}/keep.txt" -o "${bam_out}" "${in1}"
     else
-        cp "${in1}" "out/${name}.bam"
+        cp "${in1}" "${bam_out}"
     fi
 else
     if [ "${FILTER}" = "true" ]; then
@@ -294,10 +299,10 @@ else
     # samtools import rejects an empty FASTQ, so no reads gives a header-only BAM
     if [ "${FILTER}" = "true" ]; then n_out="$(wc -l < "${w}/keep.txt")"; else n_out="$(cut -f2 "out/${name}.summary.tsv")"; fi
     if [ "${n_out}" -eq 0 ]; then
-        printf '@HD\tVN:1.6\tSO:unsorted\n@RG\tID:%s\tSM:%s\n' "${name}" "${name}" | samtools view -b -o "out/${name}.bam" -
+        printf '@HD\tVN:1.6\tSO:unsorted\n@RG\tID:%s\tSM:%s\n' "${name}" "${name}" | samtools view -b -o "${bam_out}" -
     else
         if [ "${r2}" = "-" ]; then src=(-0 "${r1}"); else src=(-1 "${r1}" -2 "${r2}"); fi
-        samtools import -r "ID:${name}" -r "SM:${name}" "${src[@]}" -o "out/${name}.bam"
+        samtools import -r "ID:${name}" -r "SM:${name}" "${src[@]}" -o "${bam_out}"
     fi
 fi
 rm -rf "${w}"
@@ -317,15 +322,17 @@ SH
         xargs -P ~{concurrent} -L 1 bash -c 'run_one "$@"' _ < manifest.tsv
 
         {
-            printf 'sample\ttotal_reads\tclassified_reads\tunclassified_reads\ttop_species_taxid\ttop_species\ttop_species_reads\ttop_species_pct\tkept_reads\tkept_pct\n'
+            printf 'sample\ttotal_reads\tclassified_reads\tunclassified_reads\ttop_species_taxid\ttop_species\ttop_species_reads\ttop_species_pct\tkept_reads\tkept_pct\tremoved_reads\n'
             while read -r f; do cat "${f}"; done < summaries.list
         } > batch_summary.tsv
     >>>
 
     output {
         File          batch_summary = "batch_summary.tsv"
-        Array[File]   reports       = read_lines("reports.list")
-        Array[File]   bams          = read_lines("bams.list")
+        # Declared from the inputs, not read from a file: the backend must know the
+        # output paths before the task runs to copy them out of the VM.
+        Array[File]   reports       = prefix("out/", report_filenames)
+        Array[File]   bams          = prefix("out/", bam_filenames)
     }
 
     runtime {
@@ -335,5 +342,61 @@ SH
         disks:          "local-disk ~{disk} SSD"
         preemptible:    preemptible
         maxRetries:     1
+    }
+}
+
+
+task build_manifest {
+
+    input {
+        Array[String]  sample_ids
+        Array[String]  bam_paths
+        Array[String]  report_paths
+        File           summary_tsv
+        String         table_name = "sample"
+        String         basename   = "kraken2_manifest"
+        String         docker     = "ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982"
+    }
+
+    parameter_meta {
+        sample_ids:   "Sample names, in input order"
+        bam_paths:    "Cloud paths of the output BAMs, positionally matched to sample_ids"
+        report_paths: "Cloud paths of the kraken2 reports, positionally matched to sample_ids"
+        summary_tsv:  "Merged per-sample summary table"
+        table_name:   "Terra data table the manifest is for. The first column is entity:<table_name>_id."
+        basename:     "Basename for the emitted TSV, without extension"
+        docker:       "Container image"
+    }
+
+    meta {
+        description: "Join each sample's output BAM and report paths with its summary statistics into one TSV that can be uploaded to a Terra data table, attaching the outputs to the per-sample rows."
+    }
+
+    command <<<
+        set -euo pipefail
+        paste ~{write_lines(sample_ids)} ~{write_lines(bam_paths)} ~{write_lines(report_paths)} > paths.tsv
+
+        awk -F'\t' -v OFS='\t' -v t="~{table_name}" '
+            NR == FNR {
+                rest = $0; sub(/^[^\t]*\t/, "", rest)
+                if (FNR == 1) hdr = rest; else stats[$1] = rest
+                next
+            }
+            FNR == 1 { print "entity:" t "_id", "kraken2_bam", "kraken2_report", hdr }
+            { print $1, $2, $3, stats[$1] }
+        ' ~{summary_tsv} paths.tsv > "~{basename}.tsv"
+    >>>
+
+    output {
+        File manifest = "~{basename}.tsv"
+    }
+
+    runtime {
+        docker:         docker
+        memory:         "2 GB"
+        cpu:            1
+        disks:          "local-disk 10 SSD"
+        preemptible:    1
+        maxRetries:     2
     }
 }

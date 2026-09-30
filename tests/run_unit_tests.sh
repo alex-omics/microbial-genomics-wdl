@@ -804,8 +804,19 @@ check "keep genus A: sampleA BAM reads"   "60"  "$(nreads "$(obam sampleA)")"
 check "keep genus A: paired BAM keeps both mates" "120" "$(records "$(obam sampleA)")"
 check "keep genus A: empty BAM is empty"  "0"   "$(records "$(obam sampleD)")"
 
+# The manifest attaches outputs to Terra rows: entity header, one row per sample, BAM path, stats.
+MAN="${K2RUN}/out/manifest_tsv/kraken2_manifest.tsv"
+check "manifest header starts with the entity column" "entity:sample_id	kraken2_bam	kraken2_report	total_reads" "$(head -1 "${MAN}" | cut -f1-4)"
+check "manifest has a row per sample"       "4"   "$(awk 'NR>1' "${MAN}" | wc -l | tr -d ' ')"
+check "manifest BAM path is the sample's BAM" "sampleA.bam" "$(awk -F'\t' '$1=="sampleA"{n=split($2,p,"/"); print p[n]}' "${MAN}")"
+check "manifest carries kept_reads"         "60"  "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++) if($i=="kept_reads") k=i} $1=="sampleA"{print $k}' "${MAN}")"
+check "manifest carries removed_reads"      "65"  "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++) if($i=="removed_reads") k=i} $1=="sampleA"{print $k}' "${MAN}")"
+
 run_k2_bams k2_names filter_taxon_names=GenusA filter_taxon_names=NoSuchTaxon
 check "names: GenusA resolves like taxid 10" "60" "$(col sampleA kept_reads)"
+
+run_k2_bams k2_table terra_table_name=isolate
+check "manifest entity column follows terra_table_name" "entity:isolate_id" "$(head -1 "${K2RUN}/out/manifest_tsv/kraken2_manifest.tsv" | cut -f1)"
 
 run_k2_bams k2_keepunc filter_taxids=10 keep_unclassified=true
 check "keep + unclassified: sampleA kept" "85"  "$(col sampleA kept_reads)"
@@ -835,6 +846,13 @@ check "fastq: remove host, sampleB BAM"     "110" "$(records "$(obam sampleB)")"
 run_k2 k2_se reads_fastq_r1="${K2}/sampleC.fastq.gz" filter_taxids=10
 check "se fastq: total"                     "40"  "$(col sampleC total_reads)"
 check "se fastq: keep genus A"              "35"  "$(records "$(obam sampleC)")"
+
+# --- Output files must be named statically. A cloud backend copies outputs off the VM
+# from paths it can work out before the task runs; paths read back from a file the
+# task writes are never copied, and miniwdl (which reads the local directory afterwards)
+# cannot tell the difference.
+check "no File output is read from a task-written list" "0" \
+      "$(grep -cE 'Array\[File\].*=.*read_lines' "${REPO}/tasks/kraken2.wdl" | tr -d ' ')"
 
 # --- Contradictory inputs are rejected before any database is touched
 if miniwdl run "${REPO}/workflows/classify_kraken2_batched/classify_kraken2_batched.wdl" \

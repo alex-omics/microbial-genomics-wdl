@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 ### Added
+- `classify_kraken2_batched` - `manifest_tsv` output with each sample's BAM and report path and summary statistics, uploadable to a Terra data table to attach outputs to sample rows; `removed_reads` summary column
 - `workflows/classify_kraken2_batched` - kraken2 classification of many samples (unaligned BAM, or paired or single-end FASTQ) with the database loaded once per VM rather than once per sample, plus optional keeping or removal of reads by clade, by taxid or name. Emits per-sample reports and BAMs and one summary table
 - `tasks/kraken2.wdl` - Batch kraken2 task sharing one memory-mapped database across concurrent samples
 - `workflows/rna_seq_counts` - Paired-end RNA-seq alignment (BWA-MEM) and featureCounts, with each sample aligned to its own isolate's assembly or to one shared reference. Annotates with Bakta and builds an ortholog table with Panaroo, each skipped if supplied, and emits per-isolate matrices, a long-format table and one ortholog-level matrix
@@ -32,6 +33,7 @@
 - `tests/` - Placeholder and workspace-specific input files, and the live-network `fetch_reads_from_sra` tests
 
 ### Fixed
+- `classify_kraken2_batched` - Output BAMs and reports were never copied off the VM on Terra, because their paths were read from a file written by the task. Output paths are now declared from the inputs
 - `rna_seq_counts` - `-p` without `--countReadPairs` counted each mate separately, doubling every fragment. The pinned images for alignment, duplicate marking and counting could not run (`staphb/bwa` has no samtools; `staphb/picard` and `biocontainers/subread` do not exist on Docker Hub). `ignore_duplicates` now defaults to `false`
 - `tasks/annotate_methylation.wdl` - Sites were filtered on coverage only; now on coverage, percent-modified and modified-read count. Also fixed a column offset that put the feature end coordinate in `feature_strand`
 - `tasks/motif_landscape_summary.wdl` - Motif rows were sorted by a formatted string rather than the numeric value
