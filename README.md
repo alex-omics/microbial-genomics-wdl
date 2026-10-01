@@ -28,4 +28,4 @@ docs        # Per-workflow documentation
 Workflows are being developed during my time in the [Anahtar Lab](https://anahtarlab.mgh.harvard.edu) and 
 [Lemieux Lab](https://www.lemieuxlab.org/) at Massachusetts General Hospital. 
 The general structure of this repository is inspired by [Theiagen Genomics](https://github.com/theiagen/public_health_bioinformatics). 
-Where specified, Docker images courtesy of [StaPH-B](https://github.com/StaPH-B) and [Quay.io](https://quay.io).
+The `classify_kraken2_batched` workflow builds on the Broad Institute's [viral-pipelines](https://github.com/broadinstitute/viral-pipelines). Where specified, Docker images courtesy of [StaPH-B](https://github.com/StaPH-B) and [Quay.io](https://quay.io).

@@ -806,11 +806,11 @@ check "keep genus A: empty BAM is empty"  "0"   "$(records "$(obam sampleD)")"
 
 # The manifest attaches outputs to Terra rows: entity header, one row per sample, BAM path, stats.
 MAN="${K2RUN}/out/manifest_tsv/kraken2_manifest.tsv"
-check "manifest header starts with the entity column" "entity:sample_id	kraken2_bam	kraken2_report	total_reads" "$(head -1 "${MAN}" | cut -f1-4)"
+check "manifest header starts with the entity column" "entity:sample_id	classify_kraken2_bam	classify_kraken2_report	classify_kraken2_total_reads" "$(head -1 "${MAN}" | cut -f1-4)"
 check "manifest has a row per sample"       "4"   "$(awk 'NR>1' "${MAN}" | wc -l | tr -d ' ')"
 check "manifest BAM path is the sample's BAM" "sampleA.bam" "$(awk -F'\t' '$1=="sampleA"{n=split($2,p,"/"); print p[n]}' "${MAN}")"
-check "manifest carries kept_reads"         "60"  "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++) if($i=="kept_reads") k=i} $1=="sampleA"{print $k}' "${MAN}")"
-check "manifest carries removed_reads"      "65"  "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++) if($i=="removed_reads") k=i} $1=="sampleA"{print $k}' "${MAN}")"
+check "manifest carries kept_reads"         "60"  "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++) if($i=="classify_kraken2_kept_reads") k=i} $1=="sampleA"{print $k}' "${MAN}")"
+check "manifest carries removed_reads"      "65"  "$(awk -F'\t' 'NR==1{for(i=1;i<=NF;i++) if($i=="classify_kraken2_removed_reads") k=i} $1=="sampleA"{print $k}' "${MAN}")"
 
 run_k2_bams k2_names filter_taxon_names=GenusA filter_taxon_names=NoSuchTaxon
 check "names: GenusA resolves like taxid 10" "60" "$(col sampleA kept_reads)"

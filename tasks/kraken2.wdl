@@ -369,7 +369,7 @@ task build_manifest {
     }
 
     meta {
-        description: "Join each sample's output BAM and report paths with its summary statistics into one TSV that can be uploaded to a Terra data table, attaching the outputs to the per-sample rows."
+        description: "Join each sample's output BAM and report paths with its summary statistics into one TSV that can be uploaded to a Terra data table, attaching the outputs to the per-sample rows. Every column but the ID is prefixed with the workflow name, so its origin is clear in the table."
     }
 
     command <<<
@@ -382,7 +382,12 @@ task build_manifest {
                 if (FNR == 1) hdr = rest; else stats[$1] = rest
                 next
             }
-            FNR == 1 { print "entity:" t "_id", "kraken2_bam", "kraken2_report", hdr }
+            FNR == 1 {
+                n = split(hdr, h, "\t")
+                for (i = 1; i <= n; i++) h[i] = "classify_kraken2_" h[i]
+                cols = h[1]; for (i = 2; i <= n; i++) cols = cols OFS h[i]
+                print "entity:" t "_id", "classify_kraken2_bam", "classify_kraken2_report", cols
+            }
             { print $1, $2, $3, stats[$1] }
         ' ~{summary_tsv} paths.tsv > "~{basename}.tsv"
     >>>

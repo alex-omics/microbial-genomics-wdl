@@ -91,8 +91,9 @@ separately; the workflow does not produce plots or per-read assignment files.
 ### Attaching outputs to sample rows
 
 A run launched on a set writes its outputs to the set, not to each sample. `manifest_tsv` has one
-row per sample: `entity:<terra_table_name>_id`, `kraken2_bam`, `kraken2_report`, then every
-column of `summary_tsv`. In Terra's Data tab, upload it as a TSV (Import Data, upload file);
+row per sample: `entity:<terra_table_name>_id`, `classify_kraken2_bam`,
+`classify_kraken2_report`, then every column of `summary_tsv`. All columns after the ID carry the
+`classify_kraken2_` prefix, so their origin is clear in the table. In Terra's Data tab, upload it as a TSV (Import Data, upload file);
 rows are matched on the ID, so the new columns are added to your existing samples. If the
 first header does not match your table, edit it before uploading.
 
@@ -104,3 +105,10 @@ miniwdl run workflows/classify_kraken2_batched/classify_kraken2_batched.wdl \
     reads_fastq_r1=b_R1.fastq.gz reads_fastq_r2=b_R2.fastq.gz \
     kraken2_db_tgz=k2_db.tar.gz filter_taxids=1234
 ```
+
+## Acknowledgements
+
+This workflow builds on the classification and taxon-filtering approach of the Broad Institute's
+[viral-pipelines](https://github.com/broadinstitute/viral-pipelines) (`classify_kraken2` and
+`filter_classified_bam_to_taxa`), and runs in their `viral-classify` container image. The code
+here is a separate implementation, organised to share one database load across many samples.
