@@ -63,4 +63,6 @@ once per batch.
 miniwdl run workflows/fetch_reads_from_sra/fetch_reads_from_sra.wdl -i tests/fetch_reads_from_sra_inputs.json
 ```
 
-The same input file works locally and on Terra, since every input is a primitive.
+The same input file works locally and on Terra, since every input is a primitive (an accession
+string, not a `gs://` path). `DRR727328` is a real, tiny (~25 KB gzipped) paired-end Illumina WGS run
+for *Lacticaseibacillus rhamnosus* GG, picked via the ENA search API as a fast, cheap smoke test.
