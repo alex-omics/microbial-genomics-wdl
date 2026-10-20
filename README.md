@@ -30,3 +30,4 @@ Workflows are being developed during my time in the [Anahtar Lab](https://anahta
 [Lemieux Lab](https://www.lemieuxlab.org/) at Massachusetts General Hospital. 
 The general structure of this repository is inspired by [Theiagen Genomics](https://github.com/theiagen/public_health_bioinformatics). 
 The `classify_kraken2_batched` workflow builds on the Broad Institute's [viral-pipelines](https://github.com/broadinstitute/viral-pipelines). The `call_ospA_type` workflow wraps Pfizer's [LISTT](https://github.com/pfizer-opensource/LISTT) (Lee et al. 2024, *Microb Genom* 10:001252, Apache-2.0). Where specified, Docker images courtesy of [StaPH-B](https://github.com/StaPH-B) and [Quay.io](https://quay.io).
+Where specified, Docker images courtesy of [StaPH-B](https://github.com/StaPH-B) and [Quay.io](https://quay.io).
