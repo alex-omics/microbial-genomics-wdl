@@ -15,6 +15,9 @@
 #     synthetic isolates with planted per-gene counts
 #   - classify_kraken2_batched: the whole workflow against a tiny kraken2 database,
 #     on BAMs whose reads have planted classifications
+#   - call_ospA_type: the whole workflow against the LISTT image, on real ospA windows
+#     from two PubMLST genomes and synthetic ospA genes with planted properties,
+#     covering every flag (OK, SM, UK, DS, QF)
 #
 # Requires: miniwdl, docker, python3. All sections run offline once the images
 # are pulled.
@@ -861,6 +864,109 @@ if miniwdl run "${REPO}/workflows/classify_kraken2_batched/classify_kraken2_batc
     check "bams and fastq together are rejected" "fail" "succeeded"
 else
     check "bams and fastq together are rejected" "fail" "fail"
+fi
+
+# --------------------------------------------------------------------------
+echo "call_ospA_type"
+# Fixtures are 4 kb windows around ospA from LISTT's two PubMLST test genomes
+# (IST1, IST4), plus synthetic genes built by tests/fixtures/listt/make_fixtures.py:
+# one under its IST's identity threshold, one whose closest variant is in an IST
+# above 17, one that LISTT itself crashes on (variant 68 has no row in its
+# serotypes.csv), and a contig with no ospA.
+LT="${REPO}/tests/fixtures/listt"
+OSPA="${REPO}/workflows/call_ospA_type/call_ospA_type.wdl"
+
+run_ospa() {   # run_ospa NAME key=value ...   (prints nothing; results read with ospa_out)
+    local name="$1"; shift
+    miniwdl run "${OSPA}" "$@" --dir "${WORK}/${name}" > "${WORK}/${name}.log" 2>&1 || {
+        echo "  workflow failed ($name); see ${WORK}/${name}.log"; sed -n '$p' "${WORK}/${name}.log"; exit 1; }
+}
+ospa_out() {   # ospa_out NAME FIELD
+    python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["call_ospA_type."+sys.argv[2]])' \
+        "$(find "${WORK}/$1" -maxdepth 2 -name outputs.json | head -1)" "$2"
+}
+
+# --- Assembly and reads agree
+run_ospa ospa_ok sample_name=ist1_b31 assembly_fasta="${LT}/ist1_b31.fasta" \
+    read1="${LT}/ist1_b31_R1.fastq.gz" read2="${LT}/ist1_b31_R2.fastq.gz"
+check "agree: call"                  "IST1"                       "$(ospa_out ospa_ok ospA_call)"
+check "agree: flag"                  "OK"                         "$(ospa_out ospa_ok ospA_flag)"
+check "agree: species"               "B. burgdorferi"             "$(ospa_out ospa_ok ospA_species)"
+check "agree: identity per mode"     "assembly=100.00;reads=100.00"    "$(ospa_out ospa_ok ospA_identity)"
+check "agree: LISTT version"         "LISTT 1.2.0 (b9c6569)"      "$(ospa_out ospa_ok ospA_listt_version)"
+OKTSV="$(ospa_out ospa_ok ospA_results_tsv)"
+check "agree: results rows (assembly, reads, final)" "3" "$(awk 'NR>1' "${OKTSV}" | wc -l | tr -d ' ')"
+check "agree: modes in order"        "assembly,reads,final" "$(awk -F'\t' 'NR>1{printf "%s%s", (NR>2?",":""), $2}' "${OKTSV}")"
+check "agree: both proteins kept"    "2" "$(grep -c '>' "$(ospa_out ospa_ok ospA_protein_fasta)" | tr -d ' ')"
+check "agree: reads locus QC recorded" "yes" \
+      "$(awk -F'\t' '$2=="reads" && $15 ~ /aligned_reads=[0-9]+;median_depth=/ {print "yes"}' "${OKTSV}")"
+
+# --- Sample names with an underscore and a dot would be truncated by LISTT's own parsing
+run_ospa ospa_name sample_name=B31_S1.v2 assembly_fasta="${LT}/ist1_b31.fasta"
+check "awkward sample name survives" "IST1" "$(ospa_out ospa_name ospA_call)"
+
+# --- Assembly only: one mode supports the call
+run_ospa ospa_sm sample_name=pbi assembly_fasta="${LT}/ist4_pbi.fasta"
+check "assembly only: call"          "IST4"            "$(ospa_out ospa_sm ospA_call)"
+check "assembly only: flag"          "SM"              "$(ospa_out ospa_sm ospA_flag)"
+check "assembly only: species"       "B. bavariensis"  "$(ospa_out ospa_sm ospA_species)"
+
+# --- Assembly says IST4, reads say IST1
+run_ospa ospa_ds sample_name=mixed assembly_fasta="${LT}/ist4_pbi.fasta" \
+    read1="${LT}/ist1_b31_R1.fastq.gz" read2="${LT}/ist1_b31_R2.fastq.gz"
+check "disagree: call"               "Ambig"           "$(ospa_out ospa_ds ospA_call)"
+check "disagree: flag"               "DS"              "$(ospa_out ospa_ds ospA_flag)"
+check "disagree: both species shown" "B. bavariensis|B. burgdorferi" "$(ospa_out ospa_ds ospA_species)"
+
+# --- Reads with no ospA, assembly fine: the assembly carries the call, flagged SM
+run_ospa ospa_rqf sample_name=rqf assembly_fasta="${LT}/ist1_b31.fasta" \
+    read1="${LT}/no_ospa_R1.fastq.gz" read2="${LT}/no_ospa_R2.fastq.gz"
+check "reads fail, assembly ok: call" "IST1"           "$(ospa_out ospa_rqf ospA_call)"
+check "reads fail, assembly ok: flag" "SM"             "$(ospa_out ospa_rqf ospA_flag)"
+check "reads fail: reason recorded"   "yes" \
+      "$(ospa_out ospa_rqf ospA_details | grep -q 'reads=QF reason=no_ospa_alignment' && echo yes || echo no)"
+
+# --- No ospA anywhere
+run_ospa ospa_qf sample_name=none assembly_fasta="${LT}/no_ospa.fasta" \
+    read1="${LT}/no_ospa_R1.fastq.gz" read2="${LT}/no_ospa_R2.fastq.gz"
+check "no ospA: call"                "Unknown"         "$(ospa_out ospa_qf ospA_call)"
+check "no ospA: flag"                "QF"              "$(ospa_out ospa_qf ospA_flag)"
+check "no ospA: species"             "NA"              "$(ospa_out ospa_qf ospA_species)"
+
+# --- Under the IST's identity threshold: closest IST reported, not called.
+# LISTT alone would call this IST1.
+run_ospa ospa_below sample_name=novel assembly_fasta="${LT}/below_threshold.fasta"
+check "below threshold: call"        "Unknown"         "$(ospa_out ospa_below ospA_call)"
+check "below threshold: flag"        "UK"              "$(ospa_out ospa_below ospA_flag)"
+check "below threshold: closest IST kept" "yes" \
+      "$(ospa_out ospa_below ospA_details | grep -q 'assembly=BELOW closest=IST1 ' && echo yes || echo no)"
+check "below threshold: runner-up kept"   "yes" \
+      "$(ospa_out ospa_below ospA_details | grep -q 'runner_up=IST' && echo yes || echo no)"
+
+# --- Closest variant is in an IST above max_trusted_ist
+run_ospa ospa_prov sample_name=prov assembly_fasta="${LT}/provisional.fasta"
+check "IST above cut-off: call"      "Unknown"         "$(ospa_out ospa_prov ospA_call)"
+check "IST above cut-off: flag"      "UK"              "$(ospa_out ospa_prov ospA_flag)"
+check "IST above cut-off: closest shown" "yes" \
+      "$(ospa_out ospa_prov ospA_details | grep -q 'assembly=PROVISIONAL closest=IST18 variant=99 id=100.00' && echo yes || echo no)"
+# Raising the cut-off turns the same input into a call
+run_ospa ospa_prov25 sample_name=prov assembly_fasta="${LT}/provisional.fasta" max_trusted_ist=25
+check "cut-off raised to 25: call"   "IST18"           "$(ospa_out ospa_prov25 ospA_call)"
+check "cut-off raised to 25: flag"   "SM"              "$(ospa_out ospa_prov25 ospA_flag)"
+
+# --- LISTT crashes on variant 68 (no row in its serotypes.csv); the result is still reported
+run_ospa ospa_v68 sample_name=v68 assembly_fasta="${LT}/variant68.fasta"
+check "variant 68: call"             "Unknown"         "$(ospa_out ospa_v68 ospA_call)"
+check "variant 68: flag"             "UK"              "$(ospa_out ospa_v68 ospA_flag)"
+check "variant 68: LISTT crash recorded" "yes" \
+      "$(ospa_out ospa_v68 ospA_details | grep -q 'variant_not_in_listt_table listt_exit=1(KeyError' && echo yes || echo no)"
+
+# --- A lone read1 is rejected before anything runs, not silently ignored
+if miniwdl run "${OSPA}" sample_name=lone assembly_fasta="${LT}/ist1_b31.fasta" \
+       read1="${LT}/ist1_b31_R1.fastq.gz" --dir "${WORK}/ospa_lone" > "${WORK}/ospa_lone.log" 2>&1; then
+    check "read1 without read2 is rejected" "fail" "succeeded"
+else
+    check "read1 without read2 is rejected" "fail" "fail"
 fi
 
 # --------------------------------------------------------------------------

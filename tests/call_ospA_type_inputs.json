@@ -1,0 +1,6 @@
+{
+  "call_ospA_type.sample_name": "ist1_b31",
+  "call_ospA_type.assembly_fasta": "tests/fixtures/listt/ist1_b31.fasta",
+  "call_ospA_type.read1": "tests/fixtures/listt/ist1_b31_R1.fastq.gz",
+  "call_ospA_type.read2": "tests/fixtures/listt/ist1_b31_R2.fastq.gz"
+}

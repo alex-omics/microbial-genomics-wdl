@@ -1,0 +1,29 @@
+{
+  "below_threshold": {
+    "approx_identity_to_variant_1": 0.89,
+    "derived_from_variant": 1
+  },
+  "ist1_b31": {
+    "contig": "AE000790.2",
+    "length": 4222,
+    "source": "1_B31",
+    "strand": "+"
+  },
+  "ist4_pbi": {
+    "contig": "NC_006129.1",
+    "length": 4222,
+    "source": "155_PBi",
+    "strand": "+"
+  },
+  "provisional": {
+    "built_from_allele": "1",
+    "ist": 18,
+    "protein_identity_to_allele": 0.923,
+    "variant": 99
+  },
+  "variant68": {
+    "built_from_allele": "32",
+    "protein_identity_to_allele": 0.901,
+    "variant": 68
+  }
+}

@@ -21,6 +21,20 @@ workflows:
         - main
         - feature/assembly-qc-tasks
 
+  - name: call_ospA_type
+    subclass: WDL
+    primaryDescriptorPath: /workflows/call_ospA_type/call_ospA_type.wdl
+    readMePath: /workflows/call_ospA_type/README.md
+    testParameterFiles:
+      - /tests/call_ospA_type_inputs.json
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/call-ospa-type
+
   - name: classify_kraken2_batched
     subclass: WDL
     primaryDescriptorPath: /workflows/classify_kraken2_batched/classify_kraken2_batched.wdl
