@@ -377,16 +377,8 @@ echo "pyseer_gwas (end-to-end smoke test, real pyseer)"
 # point and failed only inside the container, with no WDL-level type error to
 # flag it. Not asserting on pyseer's own statistics (those are its job, not
 # ours) - only on the shape of what came back.
-#
-# miniwdl's -i does not tolerate the "__comment*" keys used elsewhere in this
-# repo's input JSONs for human-readable notes, so strip them first.
-python3 -c "
-import json
-d = json.load(open('${REPO}/tests/pyseer_gwas_smoke_inputs.json'))
-json.dump({k: v for k, v in d.items() if not k.startswith('__')}, open('${WORK}/smoke_inputs.json', 'w'))
-"
 miniwdl run "${REPO}/workflows/pyseer_gwas/pyseer_gwas.wdl" \
-    -i "${WORK}/smoke_inputs.json" \
+    -i "${REPO}/tests/pyseer_gwas_smoke_inputs.json" \
     --dir "${WORK}/smoke" --verbose > "${WORK}/smoke.log" 2>&1 || {
         echo "  workflow failed; see ${WORK}/smoke.log"; sed -n '$p' "${WORK}/smoke.log"; exit 1; }
 

@@ -94,5 +94,25 @@ on the corresponding input being supplied.
 miniwdl run workflows/pyseer_gwas/pyseer_gwas.wdl -i tests/pyseer_gwas_inputs.json
 ```
 
-For a quick end-to-end check on a small synthetic panel, see
-`tests/pyseer_gwas_smoke_inputs.json` and `tests/run_unit_tests.sh`.
+`tests/pyseer_gwas_inputs.json` is a template for local runs. The sequence and GWAS input files are
+not committed (they are gitignored, and specific to whatever panel you are analysing), so point it at
+your own phylogeny, Rtab and phenotype file first. Notes on its optional inputs:
+
+- `covariates_file` is `sample_id` plus one named column per covariate (e.g. RST, OspC, MLST, BAPS).
+  `covariate_combinations` runs one pyseer call per entry: a bare name is a single-covariate run, and
+  `+` joins several into one joint run (e.g. `RST+OspC`). The template deliberately does not put all
+  four in one run. RST, OspC, MLST and BAPS are categorical typing labels (never add a `q` suffix to
+  them, even where some are stored as integers), and MLST's high cardinality relative to a typical
+  isolate panel makes an all-four joint run a real degrees-of-freedom risk, not just a style choice.
+- `lineage_clusters` is optional. A BAPS export (`sample_id\tBAPS`) makes a ready-made
+  `--lineage-clusters` file.
+- `annotation_table` is optional: Panaroo's `gene_presence_absence.csv` (not the `.Rtab`) or an
+  equivalent module-annotation table.
+
+For a quick end-to-end check on a small synthetic panel, see `tests/pyseer_gwas_smoke_inputs.json`
+and `tests/run_unit_tests.sh`. That file, unlike the template, is committed with its fixtures: a tiny
+synthetic 8-sample panel exercising kinship, association, lineage effects and covariate scanning
+through miniwdl, without asserting anything about the (meaningless) synthetic p-values. It uses
+`RST+OspC` to exercise a multi-column combination, and leaves MLST out: on 8 samples it alone halves
+the survivable variants, so it would make the fixture's `covariate_scan_results` unrepresentative
+without testing anything new about this repo's own WDL logic.

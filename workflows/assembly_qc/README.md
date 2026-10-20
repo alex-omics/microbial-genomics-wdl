@@ -71,3 +71,15 @@ returned as arrays.
 ```bash
 miniwdl run workflows/assembly_qc/assembly_qc.wdl -i tests/assembly_qc_inputs.json
 ```
+
+`tests/assembly_qc_inputs.json` is a template for local runs, not a self-contained fixture:
+
+- The FASTAs are not committed (sequence files are gitignored, and they are large). Fetch
+  *B. burgdorferi* B31 (GCF_000008685.2) and *E. coli* K-12 MG1655 (GCF_000005845.2) from NCBI into
+  `tests/test_data/` before running.
+- `checkm2_db` is a local path to the CheckM2 DIAMOND database (~2.9 GB). This is the reference
+  database, not the DIAMOND aligner binary: the aligner already ships inside `staphb/checkm2:1.1.0`.
+- `busco_lineage` of `auto` places each assembly in the prokaryote tree independently. Set e.g.
+  `spirochaetales_odb10` to force one dataset across all samples.
+- For a Terra run, use `gs://` paths instead. miniwdl cannot read them, and Cromwell on Terra
+  cannot read local paths.
