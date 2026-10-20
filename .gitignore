@@ -33,6 +33,12 @@ __pycache__/
 # Deliberate exception: a tiny (~6 KB), hand-built regression fixture, not
 # real sequencing data — needed to test align_modbam's length-filter logic.
 !tests/fixtures/align_modbam/minireads.fastq
+
+# Deliberate exception: ~120 KB of 4 kb synthetic or PubMLST-derived ospA windows
+# and simulated reads, regenerable with make_fixtures.py - needed to test
+# call_ospA_type end to end.
+!tests/fixtures/listt/*.fasta
+!tests/fixtures/listt/*.fastq.gz
 *.cram
 *.vcf
 *.vcf.gz

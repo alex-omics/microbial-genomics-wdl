@@ -2,6 +2,10 @@
 
 ## [Unreleased]
 ### Added
+- `workflows/call_ospA_type` - OspA in silico type (IST) of one *Borrelia burgdorferi* s.l. isolate with Pfizer's LISTT, from its assembly and, optionally, its Illumina paired-end reads. One sample per execution with no `Array` inputs. Emits one call (`IST<n>`, `Unknown` or `Ambig`) and a flag (`OK`, `SM`, `UK`, `DS`, `QF`), plus species, identity, details, a results table, the consensus proteins and LISTT's raw output
+- `tasks/listt.wdl` - `bbsl_ospA_listt` runs one LISTT mode and classifies its consensus; `reconcile_ospA_calls` combines assembly and reads; `validate_ospA_inputs` rejects a lone `read1` or `read2`. Enforces the per-IST identity thresholds that the paper describes and LISTT's code never applies, reports ISTs above `max_trusted_ist` (default 17, those in the paper) as `Unknown`, survives LISTT's crash on variant 68, and records ospA locus QC
+- `docker/listt` - LISTT 1.2.0 (commit `b9c6569`) with its pinned tool versions, and `audit_listt_tables.py`, which checks LISTT's reference tables and re-derives its IST thresholds
+- `tests/run_unit_tests.sh` - `call_ospA_type` section: every flag, the IST cut-off, variant 68, awkward sample names and a lone `read1`
 - `classify_kraken2_batched` - Manifest columns after the ID are prefixed `classify_kraken2_`; README acknowledges the Broad Institute's viral-pipelines
 - `classify_kraken2_batched` - `manifest_tsv` output with each sample's BAM and report path and summary statistics, uploadable to a Terra data table to attach outputs to sample rows; `removed_reads` summary column
 - `workflows/classify_kraken2_batched` - kraken2 classification of many samples (unaligned BAM, or paired or single-end FASTQ) with the database loaded once per VM rather than once per sample, plus optional keeping or removal of reads by clade, by taxid or name. Emits per-sample reports and BAMs and one summary table

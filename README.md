@@ -6,6 +6,7 @@ WDL workflows for studying the genomes of bacterial and other microbial pathogen
 | -------- | ----------- | --------- |
 | annotate_assembly | Annotate an assembled genome with optional reference input  | 🔜 Planned |
 | [assembly_qc](workflows/assembly_qc) | QUAST + BUSCO + CheckM2 over a set of assemblies, collapsed into one summary table | ✅ Available |
+| [call_ospA_type](workflows/call_ospA_type) | OspA in silico type (IST) of a *Borrelia burgdorferi* s.l. isolate with Pfizer's LISTT, from its assembly and optionally its Illumina reads, with a confidence flag. One sample per run | 🚧 In development |
 | [classify_kraken2_batched](workflows/classify_kraken2_batched) | Batched kraken2 classification of many samples (unaligned BAM or FASTQ, paired or single-end) against one shared database copy per VM, with optional clade-level keep/remove filtering | ✅ Available |
 | [dna_methylation_calling](workflows/dna_methylation_calling) | Per-isolate ONT methylation calling (each isolate mapped to its own assembly), REBASE MTase homology, and a three-tier descriptive motif landscape across a pangenome | ✅ Available |
 | [fetch_reads_from_sra](workflows/fetch_reads_from_sra) | Fetches a single SRA/ENA/DDBJ run and emits gzip-compressed FASTQ, with the platform and layout it actually extracted | ✅ Available |
@@ -28,4 +29,5 @@ docs        # Per-workflow documentation
 Workflows are being developed during my time in the [Anahtar Lab](https://anahtarlab.mgh.harvard.edu) and 
 [Lemieux Lab](https://www.lemieuxlab.org/) at Massachusetts General Hospital. 
 The general structure of this repository is inspired by [Theiagen Genomics](https://github.com/theiagen/public_health_bioinformatics). 
+The `classify_kraken2_batched` workflow builds on the Broad Institute's [viral-pipelines](https://github.com/broadinstitute/viral-pipelines). The `call_ospA_type` workflow wraps Pfizer's [LISTT](https://github.com/pfizer-opensource/LISTT) (Lee et al. 2024, *Microb Genom* 10:001252, Apache-2.0). Where specified, Docker images courtesy of [StaPH-B](https://github.com/StaPH-B) and [Quay.io](https://quay.io).
 Where specified, Docker images courtesy of [StaPH-B](https://github.com/StaPH-B) and [Quay.io](https://quay.io).
