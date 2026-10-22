@@ -28,6 +28,9 @@
 - `tests/run_unit_tests.sh` - Fixture-based regression suite that runs the real WDL tasks through `miniwdl`
 - `.dockstore.yml` - Dockstore registration
 
+### Removed
+- `workflows/bacterial/`, `workflows/eukaryotic/`, `workflows/viral/` - Empty domain-grouping skeleton directories (each held only a blank `README.md`) from the repo's initial scaffold. Every workflow built so far (`assembly_qc`, `pyseer_gwas`, `fetch_reads_from_sra`) already lives flat under `workflows/<name>/`, so the domain subdirectories were unused digital clutter rather than a structure anything actually depends on
+
 ### Changed
 - `tasks/panaroo.wdl` - New optional `sample_names` input, so isolate column names in `gene_presence_absence.csv` do not depend on GFF filenames
 - `workflows/pyseer_gwas` - Removed the separate annotation of `gene_significant`, which is a subset of `gene_results`. The covariate scan's long-format table is now annotated too
