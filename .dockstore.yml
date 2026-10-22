@@ -62,6 +62,20 @@ workflows:
         - main
         - feature/fetch-reads-from-sra
 
+  - name: filter_reads
+    subclass: WDL
+    primaryDescriptorPath: /workflows/filter_reads/filter_reads.wdl
+    readMePath: /workflows/filter_reads/README.md
+    testParameterFiles:
+      - /tests/filter_reads_inputs.json
+    authors:
+      - name: Alex Arvanitis
+        email: aarvanitis1@mgh.harvard.edu
+    filters:
+      branches:
+        - main
+        - feature/filter-reads
+
   - name: rna_seq_counts
     subclass: WDL
     primaryDescriptorPath: /workflows/rna_seq_counts/rna_seq_counts.wdl

@@ -1,0 +1,34 @@
+{
+  "short_hq": {
+    "length": 300,
+    "mean_q": 20.0
+  },
+  "ok_a": {
+    "length": 1000,
+    "mean_q": 15.0
+  },
+  "ok_b": {
+    "length": 2000,
+    "mean_q": 12.0
+  },
+  "lowq": {
+    "length": 1500,
+    "mean_q": 6.0
+  },
+  "long_hq": {
+    "length": 6000,
+    "mean_q": 15.0
+  },
+  "boundary": {
+    "length": 500,
+    "mean_q": 11.0
+  },
+  "mixed": {
+    "length": 2000,
+    "mean_q": 5.0
+  },
+  "short_lq": {
+    "length": 200,
+    "mean_q": 5.0
+  }
+}

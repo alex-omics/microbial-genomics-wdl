@@ -18,6 +18,9 @@
 #   - call_ospA_type: the whole workflow against the LISTT image, on real ospA windows
 #     from two PubMLST genomes and synthetic ospA genes with planted properties,
 #     covering every flag (OK, SM, UK, DS, QF)
+#   - filter_reads: the whole workflow on eight planted reads, as a modBAM (with and
+#     without a qs tag) and as FASTQ: length and quality filters, cropping, tag
+#     preservation, and every refusal
 #
 # Requires: miniwdl, docker, python3. All sections run offline once the images
 # are pulled.
@@ -968,6 +971,113 @@ if miniwdl run "${OSPA}" sample_name=lone assembly_fasta="${LT}/ist1_b31.fasta" 
 else
     check "read1 without read2 is rejected" "fail" "fail"
 fi
+
+# --------------------------------------------------------------------------
+echo "filter_reads"
+# Eight planted reads (tests/fixtures/filter_reads/make_fixtures.py), as an unaligned
+# modBAM with a dorado-style qs tag, the same without it, and FASTQ:
+#   short_hq 300 bp Q20 | ok_a 1000 Q15 | ok_b 2000 Q12 | lowq 1500 Q6 | long_hq 6000 Q15
+#   boundary 500 Q11    | mixed 2000, half Q30 and half Q2 (mean error rate Q5; its Q scores average 16)
+#   short_lq 200 Q5
+FR="${REPO}/tests/fixtures/filter_reads"
+FRWDL="${REPO}/workflows/filter_reads/filter_reads.wdl"
+FRIMG="aarvani1/read-filter:1.0.0"
+# The tasks pin this tag; build it here if it has not been pulled or built yet
+docker image inspect "${FRIMG}" >/dev/null 2>&1 \
+    || docker build --platform linux/amd64 -t "${FRIMG}" "${REPO}/docker/read-filter" >/dev/null
+
+run_fr() {   # run_fr NAME key=value ...
+    local name="$1"; shift
+    miniwdl run "${FRWDL}" "$@" --dir "${WORK}/${name}" > "${WORK}/${name}.log" 2>&1 || {
+        echo "  workflow failed ($name); see ${WORK}/${name}.log"; sed -n '$p' "${WORK}/${name}.log"; exit 1; }
+}
+fr_fails() {   # fr_fails NAME key=value ...   (expects a failure; message goes to ${WORK}/NAME.log)
+    local name="$1"; shift
+    if miniwdl run "${FRWDL}" "$@" --dir "${WORK}/${name}" > "${WORK}/${name}.log" 2>&1; then return 1; else return 0; fi
+}
+fr_out() {   # fr_out NAME FIELD
+    python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["filter_reads."+sys.argv[2]])' \
+        "$(find "${WORK}/$1" -maxdepth 2 -name outputs.json | head -1)" "$2"
+}
+fr_sam() {   # fr_sam FILE samtools-args...   (runs samtools in the workflow's image)
+    local f; f="$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1")"; shift   # outputs are symlinks into the task directory
+    docker run --rm --platform linux/amd64 -v "$(dirname "${f}"):/w" "${FRIMG}" samtools "$@" "/w/$(basename "${f}")"
+}
+fr_bam_names() { fr_sam "$1" view | cut -f1 | sort | paste -sd, -; }
+fr_fq_names()  { gzip -dc "$1" | awk 'NR%4==1 {sub(/^@/, "", $1); print $1}' | sort | paste -sd, -; }
+
+# --- BAM, mean quality from the qs tag. 300/6000 bp fail length, lowq and mixed fail quality;
+# boundary is exactly 500 bp and is kept.
+run_fr fr_bam sample_name=t reads_bam="${FR}/reads.bam" min_length=500 max_length=5000 min_mean_q=10
+FRB="$(fr_out fr_bam filtered_reads)"
+check "bam: reads kept"                 "boundary,ok_a,ok_b"  "$(fr_bam_names "${FRB}")"
+check "bam: quality source"             "qs_tag"              "$(fr_out fr_bam filter_qscore_source)"
+check "bam: reads in / out"             "8/3"                 "$(fr_out fr_bam filter_reads_in)/$(fr_out fr_bam filter_reads_out)"
+check "bam: bases in / out"             "13500/3500"          "$(fr_out fr_bam filter_bases_in)/$(fr_out fr_bam filter_bases_out)"
+check "bam: percent reads retained"     "37.5"                "$(fr_out fr_bam filter_pct_reads_retained)"
+check "bam: N50 in / out"               "2000/2000"           "$(fr_out fr_bam filter_n50_in)/$(fr_out fr_bam filter_n50_out)"
+check "bam: MM/ML/qs tags survive"      "3"                   "$(fr_sam "${FRB}" view | grep -c 'MM:Z:C+m?,0,3,1;.*ML:B:C,200,180,150.*qs:f:')"
+check "bam: header kept (RG, PG)"       "1/1"                 "$(fr_sam "${FRB}" view -H | grep -c '^@RG')/$(fr_sam "${FRB}" view -H | grep -c '^@PG.*dorado')"
+STATS="$(fr_out fr_bam filter_stats_tsv)"
+check "bam: stats table has input and filtered rows" "input,filtered" \
+      "$(awk -F'\t' 'NR>1 {printf "%s%s", (NR>2?",":""), $2}' "${STATS}")"
+
+# --- The same filter on a BAM with no qs tag: auto falls back to computing quality from the
+# quality string, and keeps exactly the same reads
+run_fr fr_bam_noqs sample_name=t reads_bam="${FR}/reads_noqs.bam" min_length=500 max_length=5000 min_mean_q=10
+check "no qs tag: reads kept match"     "boundary,ok_a,ok_b"  "$(fr_bam_names "$(fr_out fr_bam_noqs filtered_reads)")"
+check "no qs tag: quality source"       "computed"            "$(fr_out fr_bam_noqs filter_qscore_source)"
+check "no qs tag: MM tags survive"      "3"                   "$(fr_sam "$(fr_out fr_bam_noqs filtered_reads)" view | grep -c 'MM:Z:')"
+# forcing qs_tag when records lack it must fail, not silently keep nothing
+if fr_fails fr_bam_forced sample_name=t reads_bam="${FR}/reads_noqs.bam" min_mean_q=10 qscore_source=qs_tag; then
+    check "qs_tag forced without qs tags fails" "yes" "$(grep -rqF 'have no qs tag' "${WORK}/fr_bam_forced" && echo yes || echo no)"
+else
+    check "qs_tag forced without qs tags fails" "fail" "succeeded"
+fi
+
+# --- Length alone needs no quality: source reported as none
+run_fr fr_bam_len sample_name=t reads_bam="${FR}/reads.bam" min_length=1000
+check "length only: reads kept"         "long_hq,lowq,mixed,ok_a,ok_b" "$(fr_bam_names "$(fr_out fr_bam_len filtered_reads)")"
+check "length only: quality source"     "none"                "$(fr_out fr_bam_len filter_qscore_source)"
+
+# --- FASTQ gives the same answer as the BAM
+run_fr fr_fq sample_name=t reads_fastq="${FR}/reads.fastq.gz" min_length=500 max_length=5000 min_mean_q=10
+check "fastq: reads kept"               "boundary,ok_a,ok_b"  "$(fr_fq_names "$(fr_out fr_fq filtered_reads)")"
+check "fastq: reads in / out"           "8/3"                 "$(fr_out fr_fq filter_reads_in)/$(fr_out fr_fq filter_reads_out)"
+check "fastq: output is gzipped"        "yes"                 "$(gzip -t "$(fr_out fr_fq filtered_reads)" && echo yes || echo no)"
+
+# --- Cropping (FASTQ). 100 off the start and 50 off the end, then a 400 bp minimum measured
+# after the crop: boundary (500 -> 350), short_hq (300 -> 150) and short_lq (200 -> 50) go.
+# The mean-quality filter then removes lowq and mixed.
+run_fr fr_crop sample_name=t reads_fastq="${FR}/reads.fastq.gz" head_crop=100 tail_crop=50 min_length=400 min_mean_q=10
+check "crop: reads kept"                "long_hq,ok_a,ok_b"   "$(fr_fq_names "$(fr_out fr_crop filtered_reads)")"
+check "crop: bases out (850+1850+5850)" "8550"                "$(fr_out fr_crop filter_bases_out)"
+# Quality is judged on the whole read before cropping: removing mixed's bad half does not rescue it
+run_fr fr_crop_q sample_name=t reads_fastq="${FR}/reads.fastq.gz" tail_crop=1000 min_mean_q=10
+check "crop does not rescue a low-quality read" "long_hq,ok_b" "$(fr_fq_names "$(fr_out fr_crop_q filtered_reads)")"
+
+# --- Refusals: each fails before any read is touched, with its reason in the log
+fr_refuses() {   # fr_refuses LABEL NAME EXPECTED_TEXT key=value ...
+    local label="$1" name="$2" text="$3"; shift 3
+    if fr_fails "${name}" "$@"; then
+        check "${label}" "yes" "$(grep -rqF -- "${text}" "${WORK}/${name}" "${WORK}/${name}.log" && echo yes || echo no)"
+    else
+        check "${label}" "fail" "succeeded"
+    fi
+}
+fr_refuses "no filter set is refused"            fr_no_filter  "nothing to do"       sample_name=t reads_bam="${FR}/reads.bam"
+fr_refuses "crop on a BAM is refused"            fr_bam_crop   "MM/ML tags are positional" sample_name=t reads_bam="${FR}/reads.bam" min_length=500 head_crop=10
+fr_refuses "both read inputs is refused"         fr_both       "not both"            sample_name=t reads_bam="${FR}/reads.bam" reads_fastq="${FR}/reads.fastq.gz" min_length=500
+fr_refuses "neither read input is refused"       fr_neither    "supply reads_bam or reads_fastq" sample_name=t min_length=500
+fr_refuses "min_length above max_length"         fr_minmax     "greater than max_length" sample_name=t reads_bam="${FR}/reads.bam" min_length=5000 max_length=500
+fr_refuses "unsafe sample name is refused"       fr_badname    "sample_name"         'sample_name=a b' reads_bam="${FR}/reads.bam" min_length=500
+fr_refuses "an aligned BAM is refused"           fr_aligned    "so it is aligned"    sample_name=t reads_bam="${FR}/aligned.bam" min_length=500
+
+# --- A filter that leaves too little fails instead of passing an empty file on
+fr_refuses "nothing survives: BAM fails"         fr_empty_bam  "fewer than min_reads_out" sample_name=t reads_bam="${FR}/reads.bam" min_length=100000
+fr_refuses "nothing survives: FASTQ fails"       fr_empty_fq   "fewer than min_reads_out" sample_name=t reads_fastq="${FR}/reads.fastq.gz" min_length=100000
+fr_refuses "min_reads_out above the survivors"   fr_few        "fewer than min_reads_out" sample_name=t reads_bam="${FR}/reads.bam" min_length=500 max_length=5000 min_mean_q=10 min_reads_out=5
+fr_refuses "min_bases_out above the survivors"   fr_few_bases  "fewer than min_bases_out" sample_name=t reads_bam="${FR}/reads.bam" min_length=500 max_length=5000 min_mean_q=10 min_bases_out=99999
 
 # --------------------------------------------------------------------------
 echo

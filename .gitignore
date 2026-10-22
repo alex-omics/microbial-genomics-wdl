@@ -39,6 +39,11 @@ __pycache__/
 # call_ospA_type end to end.
 !tests/fixtures/listt/*.fasta
 !tests/fixtures/listt/*.fastq.gz
+
+# Deliberate exception: ~14 KB of eight synthetic reads as unaligned BAMs and FASTQ,
+# regenerable with make_fixtures.py - needed to test filter_reads end to end.
+!tests/fixtures/filter_reads/*.bam
+!tests/fixtures/filter_reads/*.fastq.gz
 *.cram
 *.vcf
 *.vcf.gz

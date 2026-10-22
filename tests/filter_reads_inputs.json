@@ -1,0 +1,7 @@
+{
+  "filter_reads.sample_name": "fixture",
+  "filter_reads.reads_bam": "tests/fixtures/filter_reads/reads.bam",
+  "filter_reads.min_length": 500,
+  "filter_reads.max_length": 5000,
+  "filter_reads.min_mean_q": 10
+}
