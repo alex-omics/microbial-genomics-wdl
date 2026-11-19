@@ -17,7 +17,7 @@ task build_motif_list {
     }
 
     meta {
-        description: "Merge de novo (find-motifs) and homology-predicted (REBASE) motifs into one deduplicated (motif, mod_code) list for motif_landscape to test. A motif discovered both ways appears once."
+        description: "Merge de novo (find-motifs) and homology-predicted (REBASE) motifs into one deduplicated (motif, mod_code) list for motif_landscape to test. A motif discovered both ways appears once. Carries find-motifs' offset (the index of the modified base within the motif) so motif_landscape can score that base alone; a motif with no usable offset, such as one known only from REBASE, is written with offset NA and scored by window instead."
     }
 
     command <<<
@@ -37,15 +37,41 @@ task build_motif_list {
                    "m": "m", "5mc": "m", "5mC": "m",
                    "21839": "21839", "4mc": "21839", "4mC": "21839"}
 
-        motifs = set()
+        # IUPAC codes that can stand for the base each modification sits on:
+        # A for 6mA, C for 4mC and 5mC.
+        CAN_BE = {"a": set("ARWMDHVN"), "m": set("CYSMBHVN"), "21839": set("CYSMBHVN")}
+
+        # (motif, code) -> offsets known for it. An empty set means none.
+        offsets = {}
+
+        def note(motif, code, offset=None):
+            offsets.setdefault((motif, code), set())
+            if offset is None:
+                return
+            if offset < 0 or offset >= len(motif) or motif[offset] not in CAN_BE[code]:
+                # modkit's offset is the index of the modified base within the
+                # motif as written. If it does not land on a base that
+                # modification can sit on, the convention is not what this was
+                # written against, and scoring on it would silently test the
+                # wrong base. Fall back to window scoring for this motif.
+                sys.stderr.write(
+                    "WARNING: offset %d is not a plausible '%s' base in motif %s; "
+                    "scoring this motif by window instead\n" % (offset, code, motif))
+                return
+            offsets[(motif, code)].add(offset)
 
         if find_motifs_path:
             with open(find_motifs_path, newline="") as fh:
                 for row in csv.DictReader(fh, delimiter="\t"):
                     motif = (row.get("motif") or "").strip().upper()
                     code  = TO_CODE.get((row.get("mod_code") or "").strip())
-                    if motif and code:
-                        motifs.add((motif, code))
+                    if not (motif and code):
+                        continue
+                    try:
+                        off = int((row.get("offset") or "").strip())
+                    except ValueError:
+                        off = None
+                    note(motif, code, off)
 
         if rebase_path:
             with open(rebase_path, newline="") as fh:
@@ -53,15 +79,17 @@ task build_motif_list {
                     motif = (row.get("predicted_motif") or "").strip().upper()
                     code  = TO_CODE.get((row.get("modification_type") or "").strip())
                     if motif and motif != "NA" and code:
-                        motifs.add((motif, code))
+                        note(motif, code)
 
         with open(out_path, "w", newline="") as out:
             w = csv.writer(out, delimiter="\t", lineterminator="\n")
-            w.writerow(["motif", "mod_code"])
-            for motif, code in sorted(motifs):
-                w.writerow([motif, code])
+            w.writerow(["motif", "mod_code", "offset"])
+            for (motif, code), offs in sorted(offsets.items()):
+                w.writerow([motif, code, ",".join(str(o) for o in sorted(offs)) if offs else "NA"])
 
-        sys.stderr.write("%d distinct (motif, mod_code) pairs\n" % len(motifs))
+        n_off = sum(1 for o in offsets.values() if o)
+        sys.stderr.write("%d distinct (motif, mod_code) pairs, %d with a modified-base offset\n"
+                         % (len(offsets), n_off))
         PY
         # No de-indenting here: WDL strips the command block's common
         # leading whitespace before the shell ever sees it, so the heredoc
@@ -108,7 +136,7 @@ task motif_landscape {
 
     parameter_meta {
         bedmethyl:                "Unfiltered bedMethyl from modkit_pileup. The enrichment test needs the true genome-wide background rate, which a coverage/percent-filtered table would have discarded."
-        motif_list:               "Output of build_motif_list: one (motif, mod_code) pair per row"
+        motif_list:               "Output of build_motif_list: one (motif, mod_code, offset) row per motif. offset is optional; without it the motif is scored by window."
         sample_name:              "Some identifier for naming outputs"
         reference_fasta:          "This isolate's own assembly, in the same coordinates as bedmethyl"
         min_coverage:             "Minimum Nvalid_cov for a site to be included in either the in-motif or background set (default = 10)"
@@ -120,7 +148,7 @@ task motif_landscape {
     }
 
     meta {
-        description: "Test each candidate motif against this isolate's own methylation data. Tier 1: whether methylation at the motif's occurrences is elevated over the genome-wide background for that base (log2 enrichment, chi-square). Tier 2: whether those occurrences are uniformly methylated or split into high and low populations, which suggests phase variation or a regulator competing for specific copies. Occurrences are located on both strands, IUPAC codes are supported, and a motif is tested once per position even where palindromic. Testing is coarse at the base level: every base of the matching canonical type (A for 6mA, C for 4mC/5mC) within an occurrence window counts toward that occurrence, rather than a single intra-motif position."
+        description: "Test each candidate motif against this isolate's own methylation data. Tier 1: whether methylation at the motif's occurrences is elevated over the genome-wide background for that base (log2 enrichment, chi-square). Tier 2: whether those occurrences are uniformly methylated or split into high and low populations, which suggests phase variation or a regulator competing for specific copies. Occurrences are located on both strands and IUPAC codes are supported. Scoring has two modes, reported per motif in the scoring column. 'offset': the motif has a known modified-base offset, so only that base (on the strand the motif reads 5'->3' on) is scored, which is what the motif's methylation actually is. 'window': no offset is known, so every base of the matching canonical type (A for 6mA, C for 4mC/5mC) within an occurrence counts. Window scoring dilutes the in-motif rate with the unmethylated bases the window also covers, spacer N's of a split motif above all, and so reads lower in a genome where that base is common (A in a low-GC genome) than the same methylation would elsewhere. The background excludes every candidate motif's scored sites, so methylated motifs do not inflate it."
     }
 
     command <<<
@@ -139,7 +167,6 @@ task motif_landscape {
                  'B':'[CGT]','D':'[AGT]','H':'[ACT]','V':'[ACG]','N':'[ACGT]'}
         COMP = {'A':'T','T':'A','C':'G','G':'C','R':'Y','Y':'R','S':'S','W':'W',
                 'K':'M','M':'K','B':'V','V':'B','D':'H','H':'D','N':'N'}
-        CANONICAL_BASE = {'a': 'A', 'm': 'C', '21839': 'C'}
 
         def revcomp(m):
             return ''.join(COMP[b] for b in reversed(m))
@@ -148,13 +175,19 @@ task motif_landscape {
             return ''.join(IUPAC[b] for b in motif)
 
         def find_occurrences(seq, motif):
-            fwd = re.compile('(?=(' + to_regex(motif) + '))')
+            # Start positions of the motif read on the plus strand, and of its
+            # reverse complement, i.e. of the motif read on the minus strand.
+            # A palindromic motif is its own reverse complement, so each of its
+            # sites is both: GATC is methylated on both strands.
+            fwd = sorted(m.start() for m in
+                         re.finditer('(?=(' + to_regex(motif) + '))', seq))
             rc = revcomp(motif)
-            hits = {m.start() for m in fwd.finditer(seq)}
-            if rc != motif:
-                rev = re.compile('(?=(' + to_regex(rc) + '))')
-                hits |= {m.start() for m in rev.finditer(seq)}
-            return sorted(hits)
+            if rc == motif:
+                rev = list(fwd)
+            else:
+                rev = sorted(m.start() for m in
+                             re.finditer('(?=(' + to_regex(rc) + '))', seq))
+            return fwd, rev
 
         # Reference may hold multiple contigs; keep per-contig sequence and scan
         # each independently so motif windows never span a contig boundary.
@@ -173,26 +206,54 @@ task motif_landscape {
             if name is not None:
                 seqs[name] = "".join(buf).upper()
 
+        def parse_offsets(field):
+            field = (field or "").strip()
+            if not field or field == "NA":
+                return None
+            return [int(x) for x in field.split(",")]
+
         motifs = []
         with open(motif_path, newline="") as fh:
             for row in csv.DictReader(fh, delimiter="\t"):
-                motifs.append((row["motif"].strip().upper(), row["mod_code"].strip()))
+                motifs.append((row["motif"].strip().upper(), row["mod_code"].strip(),
+                               parse_offsets(row.get("offset"))))
 
-        # windows[(motif, mod_code)] = {contig: [start, start, ...]}, each
-        # contig's starts sorted ascending (find_occurrences already returns
-        # them sorted). Every window for one motif shares the same length,
-        # so storing just the start is enough to reconstruct membership.
-        windows = {}
-        for motif, code in motifs:
-            per_contig = {}
+        # Per motif, how its in-motif rows are recognised.
+        #   window mode: starts[contig] = sorted start positions; a row is in
+        #     the motif if it falls inside any [start, start+len) window.
+        #   offset mode: scored[(contig, strand, pos)] = the occurrence's start;
+        #     a row is in the motif only if it is the modified base of one.
+        # Every window for one motif shares the same length, so storing just
+        # the start is enough to reconstruct membership.
+        entries = []
+        for motif, code, offs in motifs:
+            motif_len = len(motif)
+            starts = {}
+            scored = {}
+            n_occ = 0
             for contig, seq in seqs.items():
-                occ = find_occurrences(seq, motif)
-                if occ:
-                    per_contig[contig] = occ
-            windows[(motif, code)] = per_contig
+                fwd, rev = find_occurrences(seq, motif)
+                allstarts = sorted(set(fwd) | set(rev))
+                if allstarts:
+                    starts[contig] = allstarts
+                n_occ += len(allstarts)
+                if offs is not None:
+                    # Offset k is the modified base's index within the motif as
+                    # written, on the strand the motif reads 5'->3' on. Read on
+                    # the minus strand it lies at the mirrored index, and its
+                    # bedMethyl row is the minus-strand one.
+                    for s in fwd:
+                        for k in offs:
+                            scored[(contig, '+', s + k)] = s
+                    for s in rev:
+                        for k in offs:
+                            scored[(contig, '-', s + motif_len - 1 - k)] = s
+            entries.append({"motif": motif, "code": code, "offs": offs,
+                            "len": motif_len, "starts": starts, "scored": scored,
+                            "n_occ": n_occ})
 
-        def in_any_window(contig, pos, per_contig, motif_len):
-            starts = per_contig.get(contig)
+        def in_any_window(contig, pos, starts_by_contig, motif_len):
+            starts = starts_by_contig.get(contig)
             if not starts:
                 return None
             # A window covers pos iff its start falls in
@@ -207,8 +268,11 @@ task motif_landscape {
                 return starts[i]
             return None
 
-        # bedMethyl: 0 chrom,1 start,3 mod_code,9 Nvalid_cov,10 pct,11 Nmod
+        # bedMethyl: 0 chrom,1 start,3 mod_code,5 strand,9 Nvalid_cov,10 pct,11 Nmod
         by_code = defaultdict(list)
+        for_code_entries = defaultdict(list)
+        for e in entries:
+            for_code_entries[e["code"]].append(e)
         with open(bedmethyl_path) as fh:
             for line in fh:
                 f = line.rstrip("\n").split("\t")
@@ -217,31 +281,58 @@ task motif_landscape {
                 cov = int(f[9])
                 if cov < mincov:
                     continue
-                by_code[f[3]].append((f[0], int(f[1]), float(f[10]), int(f[11]), cov))
+                by_code[f[3]].append((f[0], int(f[1]), float(f[10]), int(f[11]), cov, f[5]))
+
+        # A row that is a scored site of ANY candidate motif is not background
+        # for any of them. Without this, a genome with several methylated
+        # motifs tests each against a background carrying the others' sites.
+        # One pass per modification code, so it costs about one extra motif.
+        excluded = {}
+        for code, sites in by_code.items():
+            offset_sites = set()
+            window_entries = []
+            for e in for_code_entries.get(code, []):
+                if e["offs"] is not None:
+                    offset_sites.update(e["scored"])
+                else:
+                    window_entries.append(e)
+            flags = []
+            for contig, pos, pct, nmod, cov, strand in sites:
+                hit = (contig, strand, pos) in offset_sites
+                if not hit:
+                    for e in window_entries:
+                        if in_any_window(contig, pos, e["starts"], e["len"]) is not None:
+                            hit = True
+                            break
+                flags.append(hit)
+            excluded[code] = flags
 
         results = []
-        for motif, code in motifs:
-            per_contig = windows[(motif, code)]
-            motif_len = len(motif)
+        for e in entries:
+            motif, code, offs = e["motif"], e["code"], e["offs"]
+            scoring = "offset" if offs is not None else "window"
+            offset_str = ",".join(str(o) for o in offs) if offs is not None else "NA"
             sites = by_code.get(code, [])
+            flags = excluded.get(code, [])
             in_pct, bg_pct = [], []
             in_mod = in_cov = bg_mod = bg_cov = 0
-            occ_rep = {}  # (contig, window_start) -> max pct seen in that window
-            for contig, pos, pct, nmod, cov in sites:
-                w = in_any_window(contig, pos, per_contig, motif_len)
+            occ_rep = {}  # (contig, occurrence start) -> max pct seen in that occurrence
+            for (contig, pos, pct, nmod, cov, strand), is_excluded in zip(sites, flags):
+                if offs is not None:
+                    w = e["scored"].get((contig, strand, pos))
+                else:
+                    w = in_any_window(contig, pos, e["starts"], e["len"])
                 if w is not None:
                     in_pct.append(pct); in_mod += nmod; in_cov += cov
                     key = (contig, w)
                     occ_rep[key] = max(occ_rep.get(key, 0.0), pct)
-                else:
+                elif not is_excluded:
                     bg_pct.append(pct); bg_mod += nmod; bg_cov += cov
 
-            n_genomic_occurrences = sum(len(v) for v in per_contig.values())
-
             if not in_pct or not bg_pct:
-                results.append([sample, motif, code, n_genomic_occurrences,
+                results.append([sample, motif, code, e["n_occ"],
                                  len(in_pct), "NA", "NA", "NA", "NA",
-                                 "NA", "NA", "NA"])
+                                 "NA", "NA", "NA", offset_str, scoring])
                 continue
 
             in_mean = statistics.mean(in_pct)
@@ -264,17 +355,18 @@ task motif_landscape {
             rep_cv = (statistics.pstdev(reps) / rep_mean) if rep_mean > 0 and len(reps) > 1 else 0.0
             n_low = sum(1 for r in reps if r < low_cut)
 
-            results.append([sample, motif, code, n_genomic_occurrences,
+            results.append([sample, motif, code, e["n_occ"],
                              len(in_pct), "%.2f" % in_mean, "%.2f" % bg_mean,
                              "%.3f" % log2fc, "%.3e" % pval,
-                             "%.3f" % rep_cv, len(reps), n_low])
+                             "%.3f" % rep_cv, len(reps), n_low, offset_str, scoring])
 
         with open(out_path, "w", newline="") as out:
             w = csv.writer(out, delimiter="\t", lineterminator="\n")
             w.writerow(["sample", "motif", "mod_code", "n_genomic_occurrences",
                         "n_sites_tested", "in_motif_mean_pct", "background_mean_pct",
                         "log2_enrichment", "chi2_pvalue",
-                        "occurrence_cv", "n_occurrences_scored", "n_occurrences_low"])
+                        "occurrence_cv", "n_occurrences_scored", "n_occurrences_low",
+                        "offset", "scoring"])
             w.writerows(results)
         PY
         # No de-indenting here: WDL strips the command block's common

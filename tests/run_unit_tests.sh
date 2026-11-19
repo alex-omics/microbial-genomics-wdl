@@ -176,6 +176,32 @@ check "de novo and REBASE agreement dedupes to one row" "1" \
 check "REBASE-only motif also present" "1" \
     "$(awk -F'\t' 'NR>1 && $1=="CCWGG" && $2=="m"' "${LIST}" | wc -l | tr -d ' ')"
 check "row count matches expected dedup" "2" "$(awk 'NR>1' "${LIST}" | wc -l | tr -d ' ')"
+# find-motifs' offset (index of the modified base) rides along so motif_landscape
+# can score that base alone; a motif known only from REBASE has none.
+check "de novo motif carries find-motifs' offset" "1"  "$(awk -F'\t' '$1=="GATC"{print $3}' "${LIST}")"
+check "REBASE-only motif has no offset"           "NA" "$(awk -F'\t' '$1=="CCWGG"{print $3}' "${LIST}")"
+
+# The offset is trusted only if it lands on a base that modification can sit on
+# (A for 6mA, C for 4mC/5mC). One that does not means modkit's convention is not
+# what the scoring was written against, and scoring on it would silently test the
+# wrong base, so that motif falls back to window scoring with a warning. Run
+# directly from the extracted script, as the REBASE join is above.
+sed -n '/^        cat > merge.py/,/^        PY$/p' "${REPO}/tasks/motif_landscape.wdl" | sed '1d;$d' | sed 's/^        //' > "${WORK}/merge_motifs.py"
+printf 'mod_code\tmotif\toffset\n' > "${WORK}/fm_offsets.tsv"
+printf 'a\tGATC\t0\n'            >> "${WORK}/fm_offsets.tsv"   # G: not an A
+printf 'a\tGAAGNNNNNNTCC\t2\n'   >> "${WORK}/fm_offsets.tsv"   # A: fine
+printf 'm\tCCWGG\t1\n'           >> "${WORK}/fm_offsets.tsv"   # C: fine for 5mC
+printf 'a\tGAAG\t1\n'            >> "${WORK}/fm_offsets.tsv"
+printf 'a\tGAAG\t2\n'            >> "${WORK}/fm_offsets.tsv"   # same motif, a second modified base
+printf 'a\tTTTT\t9\n'            >> "${WORK}/fm_offsets.tsv"   # beyond the motif
+python3 "${WORK}/merge_motifs.py" "${WORK}/fm_offsets.tsv" - "${WORK}/fm_list.tsv" 2> "${WORK}/fm_warn.txt"
+offset_of() { awk -F'\t' -v m="$1" '$1==m{print $3}' "${WORK}/fm_list.tsv"; }
+check "offset on a non-A for 6mA is rejected"          "NA"     "$(offset_of GATC)"
+check "...with a warning naming the motif"             "1"      "$(grep -c 'not a plausible .a. base in motif GATC' "${WORK}/fm_warn.txt" | tr -d ' ')"
+check "offset beyond the motif is rejected"            "NA"     "$(offset_of TTTT)"
+check "valid offset on a degenerate motif is kept"     "2"      "$(offset_of GAAGNNNNNNTCC)"
+check "valid offset on a C for 5mC is kept"            "1"      "$(offset_of CCWGG)"
+check "one motif's several modified bases are merged"  "1,2"    "$(offset_of GAAG)"
 
 # --------------------------------------------------------------------------
 echo "annotate_motif_membership"
@@ -228,6 +254,55 @@ ML2="$(find "${WORK}/ml2" -path '*/out/*' -name '*_motif_landscape.tsv' | head -
 check "tier1: uniform isolate enrichment"        "97.00" "$(awk -F'\t' 'NR==2{print $6}' "${ML2}")"
 check "tier2: uniform isolate CV near zero (housekeeping null)" "0.006" "$(awk -F'\t' 'NR==2{print $10}' "${ML2}")"
 check "tier2: uniform isolate has no low-methylation copies"    "0"     "$(awk -F'\t' 'NR==2{print $12}' "${ML2}")"
+check "scoring column: no offset in the list means window"      "window" "$(awk -F'\t' 'NR==2{print $14}' "${ML1}")"
+
+# The same isolates scored on the modified base alone. GATC's window holds only
+# its two methylated bases, so the numbers must not move.
+miniwdl run "${REPO}/tasks/motif_landscape.wdl" --task motif_landscape \
+    bedmethyl="${MOTIF_FIX}/iso1.bedmethyl.bed" \
+    motif_list="${MOTIF_FIX}/motif_list_offset.tsv" \
+    sample_name=iso1 \
+    reference_fasta="${MOTIF_FIX}/reference.fa" \
+    --dir "${WORK}/ml1off" > "${WORK}/ml1off.log" 2>&1 || {
+        echo "  task failed; see ${WORK}/ml1off.log"; exit 1; }
+ML1OFF="$(find "${WORK}/ml1off" -path '*/out/*' -name '*_motif_landscape.tsv' | head -1)"
+check "offset scoring: scoring column says offset"         "offset" "$(awk -F'\t' 'NR==2{print $14}' "${ML1OFF}")"
+check "offset scoring: GATC (both bases methylated) unchanged" "65.25" "$(awk -F'\t' 'NR==2{print $6}' "${ML1OFF}")"
+check "offset scoring: heterogeneity unchanged"            "153"   "$(awk -F'\t' 'NR==2{print $12}' "${ML1OFF}")"
+
+# --------------------------------------------------------------------------
+echo "motif_landscape: in-motif rate must not depend on genome composition"
+# Identical planted methylation in a 38% and a 66% GC genome (see
+# make_composition_fixtures.py): a bipartite Type I motif, 6mA at ~95% on its
+# modified bases. Scoring every A in the window dilutes the rate with the
+# unmethylated A's of the N spacer, more so in the A-rich genome; scoring the
+# modified base does not. Window scoring is asserted too, as the documented
+# fallback, so a change to it cannot go unnoticed.
+COMP="${WORK}/composition"
+python3 "${MOTIF_FIX}/make_composition_fixtures.py" "${COMP}"
+run_landscape() {   # run_landscape NAME GENOME MODE  -> sets ${WORK}/NAME/.. ; prints the landscape TSV
+    miniwdl run "${REPO}/tasks/motif_landscape.wdl" --task motif_landscape \
+        bedmethyl="${COMP}/$2.bedmethyl.bed" motif_list="${COMP}/motifs_$3.tsv" \
+        sample_name="$1" reference_fasta="${COMP}/$2.fa" \
+        --dir "${WORK}/$1" > "${WORK}/$1.log" 2>&1 || {
+            echo "  task failed; see ${WORK}/$1.log"; exit 1; }
+    find "${WORK}/$1" -path '*/out/*' -name '*_motif_landscape.tsv' | head -1
+}
+in_motif() { awk -F'\t' -v m="$2" '$2==m {print $6}' "$1"; }
+within() { python3 -c 'import sys; v,lo,hi=map(float,sys.argv[1:4]); print("yes" if lo<=v<=hi else "no")' "$@"; }
+TYPE1="GAAGNNNNNNTCC"
+CL_OFF="$(run_landscape comp_low_off lowgc offset)";  CH_OFF="$(run_landscape comp_high_off highgc offset)"
+CL_WIN="$(run_landscape comp_low_win lowgc window)";  CH_WIN="$(run_landscape comp_high_win highgc window)"
+check "offset: low-GC genome recovers the planted ~95%"  "yes" "$(within "$(in_motif "${CL_OFF}" ${TYPE1})" 92 98)"
+check "offset: high-GC genome recovers the planted ~95%" "yes" "$(within "$(in_motif "${CH_OFF}" ${TYPE1})" 92 98)"
+check "offset: GATC (palindromic, both strands) ~95%"    "yes" "$(within "$(in_motif "${CL_OFF}" GATC)" 92 98)"
+check "offset: background is the planted ~2% noise"      "yes" "$(within "$(awk -F'\t' -v m="${TYPE1}" '$2==m{print $7}' "${CL_OFF}")" 1.5 2.5)"
+check "window fallback: low-GC genome is diluted"        "yes" "$(within "$(in_motif "${CL_WIN}" ${TYPE1})" 20 50)"
+check "window fallback: reads higher in the high-GC genome" "yes" \
+      "$(python3 -c 'import sys; print("yes" if float(sys.argv[2])-float(sys.argv[1])>5 else "no")' \
+         "$(in_motif "${CL_WIN}" ${TYPE1})" "$(in_motif "${CH_WIN}" ${TYPE1})")"
+check "window fallback: GATC unaffected"                 "yes" "$(within "$(in_motif "${CL_WIN}" GATC)" 92 98)"
+check "background excludes the other motifs' sites (window)" "yes" "$(within "$(awk -F'\t' -v m="${TYPE1}" '$2==m{print $7}' "${CH_WIN}")" 1.5 2.5)"
 
 # --------------------------------------------------------------------------
 echo "motif_landscape_summary (tier 3, run directly -- see note below)"
@@ -273,6 +348,19 @@ python3 "${WORK}/summarise.py" \
 check "CV tie breaks on mean density, not file order" "group_X" \
     "$(awk -F'\t' 'NR==2{print $1}' "${WORK}/by_gene_cv_tie.tsv")"
 
+# Percentages scored two ways are on different scales, so a motif scored by
+# offset in one isolate and by window in another must say so. Landscape tables
+# from before the scoring column existed were all window-scored.
+check "summary: tables without a scoring column read as window" "window" \
+    "$(awk -F'\t' 'NR==2{print $9}' "${WORK}/by_motif.tsv")"
+awk -F'\t' 'BEGIN{OFS="\t"} NR==1{print $0,"offset","scoring"; next} {print $0,"1","offset"}' \
+    "${MOTIF_FIX}/iso2_landscape.tsv" > "${WORK}/iso2_offset_landscape.tsv"
+python3 "${WORK}/summarise.py" \
+    "${MOTIF_FIX}/iso1_landscape.tsv,${WORK}/iso2_offset_landscape.tsv" - "" \
+    "${WORK}/by_motif_mixed.tsv" /dev/null
+check "summary: offset in one isolate, window in another is mixed" "mixed" \
+    "$(awk -F'\t' 'NR==2{print $9}' "${WORK}/by_motif_mixed.tsv")"
+
 # --------------------------------------------------------------------------
 echo "align_modbam length filter"
 # The filter that would have caught the false "different isolate" alarm this
@@ -298,6 +386,89 @@ check "long read is kept" "1" \
     "$(grep -c '^@long1$' "${WORK}/filtered.fastq")"
 check "output FASTQ structure is not corrupted (2 records = 8 lines)" "8" \
     "$(wc -l < "${WORK}/filtered.fastq" | tr -d ' ')"
+
+# --------------------------------------------------------------------------
+echo "modkit_pileup: unrecognised modification codes are reported, not silently dropped"
+# Extracted from the task, as above. A bedMethyl carrying a code this pipeline
+# does not interpret (here h, 5hmC) must be listed in mod_codes_seen and warned
+# about, since it is otherwise absent from every count and reads as "no such
+# modification" rather than "not looked at".
+mkdir -p "${WORK}/modcodes"
+printf 'chr1\t1\t2\ta\t5\t+\t1\t2\t0,0,0\t30\t95.0\t28\t0\t0\t0\t0\t0\t0\n'     >  "${WORK}/modcodes/t.bedmethyl.bed"
+printf 'chr1\t3\t4\tm\t5\t+\t3\t4\t0,0,0\t30\t10.0\t3\t0\t0\t0\t0\t0\t0\n'      >> "${WORK}/modcodes/t.bedmethyl.bed"
+printf 'chr1\t5\t6\th\t5\t+\t5\t6\t0,0,0\t30\t40.0\t12\t0\t0\t0\t0\t0\t0\n'     >> "${WORK}/modcodes/t.bedmethyl.bed"
+printf 'chr1\t7\t8\th\t5\t+\t7\t8\t0,0,0\t30\t41.0\t12\t0\t0\t0\t0\t0\t0\n'     >> "${WORK}/modcodes/t.bedmethyl.bed"
+printf 'chr1\t9\t10\t21839\t5\t+\t9\t10\t0,0,0\t30\t60.0\t18\t0\t0\t0\t0\t0\t0\n' >> "${WORK}/modcodes/t.bedmethyl.bed"
+# The block runs from the counting awk through the warning awk, with an if/fi in between.
+sed -n '/^        awk -F.\\t. .{n\[\$4\]++}/,/^            }. mod_code_counts.tsv/p' "${REPO}/tasks/modkit.wdl" \
+    | sed 's/~{sample_name}/t/g' > "${WORK}/modcodes/block.sh"
+check "the extracted block is not empty" "yes" "$([ -s "${WORK}/modcodes/block.sh" ] && echo yes || echo no)"
+( cd "${WORK}/modcodes" && bash -euo pipefail block.sh 2> warn.txt )
+check "every code emitted is listed, sorted"      "21839,a,h,m" "$(cat "${WORK}/modcodes/MOD_CODES")"
+check "an uninterpreted code is warned about"     "1" "$(grep -c 'code "h" (2 rows)' "${WORK}/modcodes/warn.txt" | tr -d ' ')"
+check "interpreted codes are not warned about"    "0" "$(grep -c -E 'code "(a|m|21839)"' "${WORK}/modcodes/warn.txt" | tr -d ' ')"
+
+# --------------------------------------------------------------------------
+echo "validate_annotation"
+# Each isolate's assembly and annotation arrive as five positionally matched
+# arrays. A mismatch the later stages cannot see is the whole reason for this
+# task: a GFF from another isolate with generic contig names and identically
+# numbered genes (the default of several annotators) still intersects the pileup
+# and labels every site with the wrong isolate's genes. Fixtures built by
+# tests/fixtures/validate_annotation/make_fixtures.py.
+VA="${REPO}/tests/fixtures/validate_annotation"
+VAWDL="${REPO}/tasks/validate_annotation.wdl"
+va_run() {   # va_run NAME ASSEMBLY GFF3 FNA FAA   -> 0 if the check passed
+    local name="$1"; shift
+    miniwdl run "${VAWDL}" assembly="$1" gff3="$2" fna="$3" faa="$4" sample_name="${name}" \
+        --dir "${WORK}/${name}" > "${WORK}/${name}.log" 2>&1
+}
+va_out() {   # va_out NAME FIELD
+    python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["validate_annotation."+sys.argv[2]])' \
+        "$(find "${WORK}/$1" -maxdepth 2 -name outputs.json | head -1)" "$2"
+}
+va_refuses() {   # va_refuses LABEL NAME TEXT ASSEMBLY GFF3 FNA FAA
+    local label="$1" name="$2" text="$3"; shift 3
+    if va_run "${name}" "$@"; then
+        check "${label}" "fail" "succeeded"
+    else
+        check "${label}" "yes" "$(grep -rqF -- "${text}" "${WORK}/${name}" "${WORK}/${name}.log" && echo yes || echo no)"
+    fi
+}
+
+va_run va_ok "${VA}/isoA.fa" "${VA}/isoA.gff3" "${VA}/isoA.fna" "${VA}/isoA.faa" \
+    || { echo "  clean set was refused; see ${WORK}/va_ok.log"; exit 1; }
+EXP() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]+"/expected.json"))["isoA"][sys.argv[2]])' "${VA}" "$1"; }
+check "clean set: contigs"              "$(EXP n_contigs)"   "$(va_out va_ok n_contigs)"
+check "clean set: genome size"          "$(EXP genome_size)" "$(va_out va_ok genome_size)"
+check "clean set: GC%"                  "$(EXP gc_percent)"  "$(va_out va_ok gc_percent)"
+check "clean set: CDS (not the sORF or tRNA)" "$(EXP n_cds)" "$(va_out va_ok n_cds)"
+check "clean set: sample name passes through" "va_ok"        "$(va_out va_ok checked_name)"
+
+# The assembly may be gzipped (align_modbam accepts that), and a correctly
+# matched set with generic names must pass.
+gzip -c "${VA}/isoA.fa" > "${WORK}/isoA.fa.gz"
+va_run va_gz "${WORK}/isoA.fa.gz" "${VA}/isoA.gff3" "${VA}/isoA.fna" "${VA}/isoA.faa" \
+    && check "gzipped assembly is accepted" "ok" "ok" || check "gzipped assembly is accepted" "ok" "refused"
+va_run va_generic "${VA}/genericA.fa" "${VA}/genericA.gff3" "${VA}/genericA.fna" "${VA}/genericA.faa" \
+    && check "a correctly matched generic-name set passes" "ok" "ok" || check "a correctly matched generic-name set passes" "ok" "refused"
+
+va_refuses "annotator renamed the contigs"           va_renamed  "probably renamed the contigs" \
+    "${VA}/isoA.fa" "${VA}/renamed.gff3" "${VA}/renamed.fna" "${VA}/isoA.faa"
+va_refuses "annotation set of another isolate"       va_other    "are not the same sequences" \
+    "${VA}/isoA.fa" "${VA}/isoB.gff3" "${VA}/isoB.fna" "${VA}/isoB.faa"
+va_refuses "GFF names a contig the assembly lacks"   va_partial  "names contigs that are not in the assembly" \
+    "${VA}/isoA.fa" "${VA}/partial.gff3" "${VA}/isoA.fna" "${VA}/isoA.faa"
+va_refuses "GFF length disagrees with the assembly"  va_region   "declares contig lengths that differ" \
+    "${VA}/isoA.fa" "${VA}/badregion.gff3" "${VA}/isoA.fna" "${VA}/isoA.faa"
+# The silent case: identical contig names AND identical gene numbering, so only
+# the contig lengths tell the isolates apart.
+va_refuses "generic names, annotation set swapped"   va_gen_all  "are not the same sequences" \
+    "${VA}/genericA.fa" "${VA}/genericB.gff3" "${VA}/genericB.fna" "${VA}/genericB.faa"
+va_refuses "generic names, only the GFF swapped"     va_gen_gff  "declares contig lengths that differ" \
+    "${VA}/genericA.fa" "${VA}/genericB.gff3" "${VA}/genericA.fna" "${VA}/genericA.faa"
+va_refuses "protein FASTA of another isolate"        va_faa      "protein FASTA is probably from a different isolate" \
+    "${VA}/isoA.fa" "${VA}/isoA.gff3" "${VA}/isoA.fna" "${VA}/isoB.faa"
 
 # --------------------------------------------------------------------------
 echo "pyseer_annotate_results"

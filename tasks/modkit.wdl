@@ -68,6 +68,23 @@ task modkit_pileup {
         awk -F'\t' '$4=="21839"' ~{sample_name}.bedmethyl.bed > ~{sample_name}.4mC.bed  || true
         awk -F'\t' '$4=="m"'     ~{sample_name}.bedmethyl.bed > ~{sample_name}.5mC.bed  || true
 
+        # Only those three codes are interpreted here. A pileup that carries any
+        # other (h for 5hmC, or codes from a basecalling model this pipeline was
+        # not written for) is silently absent from every split BED and count
+        # above, which reads as "no such modification" rather than "not looked
+        # at". Record what was emitted and say so loudly when it is more than
+        # this pipeline handles.
+        awk -F'\t' '{n[$4]++} END {for (c in n) print c "\t" n[c]}' ~{sample_name}.bedmethyl.bed \
+            | LC_ALL=C sort -k1,1 > mod_code_counts.tsv
+        if [ -s mod_code_counts.tsv ]; then
+            cut -f1 mod_code_counts.tsv | paste -sd, - > MOD_CODES
+        else
+            echo "NA" > MOD_CODES
+        fi
+        awk -F'\t' '$1!="a" && $1!="21839" && $1!="m" {
+                printf "WARNING: bedMethyl carries modification code \"%s\" (%s rows), which this pipeline does not interpret; it is excluded from the 6mA/4mC/5mC counts.\n", $1, $2 > "/dev/stderr"
+            }' mod_code_counts.tsv
+
         # Per-code counts of confidently methylated sites. A site is counted
         # only if it clears both coverage and percent-modified floors: a 100%
         # modified position at 3x is noise, not a methylation call.
@@ -117,6 +134,7 @@ task modkit_pileup {
         String  mean_percent_6ma    = read_string("PCT_6MA")
         String  mean_percent_4mc    = read_string("PCT_4MC")
         String  mean_percent_5mc    = read_string("PCT_5MC")
+        String  mod_codes_seen      = read_string("MOD_CODES")
         String  modkit_version      = read_string("VERSION")
     }
 

@@ -2,7 +2,7 @@ version 1.0
 
 import "../../tasks/align_modbam.wdl" as align_task
 import "../../tasks/modkit.wdl" as modkit_task
-import "../../tasks/bakta.wdl" as bakta_task
+import "../../tasks/validate_annotation.wdl" as validate_task
 import "../../tasks/annotate_methylation.wdl" as annotate_task
 import "../../tasks/panaroo.wdl" as panaroo_task
 import "../../tasks/methylation_orthologs.wdl" as ortholog_task
@@ -15,29 +15,24 @@ import "../../tasks/utils.wdl" as utils
 workflow dna_methylation_calling {
 
     meta {
-        description: "Per-isolate bacterial methylation calling from ONT modified-basecalled BAMs. Each isolate's reads are mapped to its own assembly, piled up with modkit, scanned for methylated motifs, and joined to a Bakta annotation of the same assembly. Self-mapping is deliberate: with a large accessory genome and frequent rearrangement no single reference is adequate, and motif discovery against a foreign reference reads sequence context the isolate does not have."
+        description: "Per-isolate bacterial methylation calling from ONT modified-basecalled BAMs. Each isolate's reads are mapped to its own assembly, piled up with modkit, scanned for methylated motifs, and joined to a supplied annotation of the same assembly. Works for any bacterium for which the assemblies and their annotations are available; nothing in it is specific to a species. Self-mapping is deliberate: with a large accessory genome and frequent rearrangement no single reference is adequate, and motif discovery against a foreign reference reads sequence context the isolate does not have. This workflow does not assemble or annotate."
         author: "Alex Arvanitis"
     }
 
     input {
         Array[File]     modbams
         Array[File]     assemblies
+
+        # Each isolate's annotation of its own assembly, from whatever annotator
+        # produced it (e.g. the Bakta output of TheiaProk). All three are
+        # positionally matched to modbams/assemblies, and checked against the
+        # assembly before anything expensive runs.
+        Array[File]     annotation_gff3s
+        Array[File]     annotation_faas
+        Array[File]     annotation_fnas
+
         Array[String]?  sample_names
 
-        # Trusted proteins for Bakta's first-pass CDS assignment (e.g. a reference
-        # proteome), transferring reference gene names onto each isolate's genes.
-        File?           proteins
-        File?           bakta_db
-
-        # Reuse existing Bakta annotations instead of re-running Bakta. All three
-        # must be supplied together, positionally matched to modbams/assemblies;
-        # if any is omitted, Bakta runs. Bakta with a full database is the slowest
-        # stage of this workflow.
-        Array[File]?    bakta_gff3s
-        Array[File]?    bakta_faas
-        Array[File]?    bakta_fnas
-
-        Boolean         run_bakta         = true
         Boolean         run_find_motifs   = true
         Boolean         run_pangenome     = true
 
@@ -89,9 +84,6 @@ workflow dna_methylation_calling {
         Boolean         trim_to_intergenic = true
         String          feature_type       = "CDS"
 
-        String          genus              = "Pseudomonas"
-        String          species            = "aeruginosa"
-
         String          summary_basename   = "methylation_summary"
         String          merged_basename    = "methylation_calls_long"
     }
@@ -99,15 +91,12 @@ workflow dna_methylation_calling {
     parameter_meta {
         modbams:            "Modified-basecalled BAMs, one per isolate, carrying MM/ML tags"
         assemblies:         "Each isolate's own assembly, positionally matched to modbams. This workflow does not assemble."
+        annotation_gff3s:   "Each isolate's GFF3 annotation of its own assembly, positionally matched to modbams/assemblies. Its sequence names must be the assembly's contig names. Locus tags are what the pangenome later maps onto shared ortholog groups."
+        annotation_faas:    "Each isolate's protein FASTA from the same annotation, positionally matched. Used for REBASE homology."
+        annotation_fnas:    "Each isolate's nucleotide FASTA from the same annotation (the assembly as the annotator wrote it), positionally matched. Used for the pangenome and to check the annotation against the assembly."
         sample_names:       "Optional labels, positionally matched to modbams. If omitted, names are derived from each filename."
-        proteins:           "FASTA of trusted proteins for Bakta --proteins, e.g. the PAO1 proteome"
-        bakta_db:           "Optional .tar.gz of the full Bakta database. Omitted, the light database in the image is used. Ignored when bakta_gff3s/bakta_faas/bakta_fnas are supplied."
-        bakta_gff3s:        "Pre-computed Bakta GFF3s, positionally matched to modbams/assemblies, to skip re-running Bakta. Must be supplied together with bakta_faas and bakta_fnas."
-        bakta_faas:         "Pre-computed Bakta protein FASTAs, positionally matched to modbams/assemblies. Must be supplied together with bakta_gff3s and bakta_fnas."
-        bakta_fnas:         "Pre-computed Bakta nucleotide FASTAs (as Bakta itself emits them, e.g. with --keep-contig-headers), positionally matched to modbams/assemblies. Must be supplied together with bakta_gff3s and bakta_faas."
-        run_bakta:          "Annotate each assembly with Bakta. Turn off only if supplying annotations another way (default = true)"
         run_find_motifs:    "Per-isolate de novo motif discovery. The motif inventory is a primary characterisation axis here, effectively reporting which restriction-modification systems each isolate carries (default = true)"
-        run_pangenome:      "Build a pangenome across the panel and collapse methylation onto ortholog groups. This is what makes independently assembled isolates comparable; without it the outputs are a per-isolate catalogue (default = true)"
+        run_pangenome:      "Build a pangenome across the panel and collapse methylation onto ortholog groups. This is what makes independently assembled isolates comparable; without it the outputs are a per-isolate catalogue. The panel should be a single species: ortholog groups across species are not meaningful (default = true)"
         panaroo_clean_mode: "Panaroo error-correction mode: strict, moderate, or sensitive. Complete ONT assemblies justify 'strict' (default = strict)"
         core_threshold:     "Fraction of isolates a gene must appear in to be called core (default = 0.95)"
         min_coverage:       "Minimum Nvalid_cov for a site to be counted or annotated (default = 10)"
@@ -122,7 +111,7 @@ workflow dna_methylation_calling {
         rebase_evalue:             "BLASTP e-value cutoff for a REBASE homology call, as a String -- a Float this small renders as the literal text 0.000000 in WDL's interpolation, which blastp rejects (default = \"1e-25\")"
         run_motif_landscape:       "Test de novo and REBASE candidate motifs against this isolate's own data (enrichment and within-genome heterogeneity), then summarise variability across the panel by motif and by gene. Descriptive only; needs no phenotype data (default = true)"
         heterogeneous_low_cutoff:  "Below this percent-modified, a motif occurrence counts as 'low' in the heterogeneity summary -- meaningful relative to the panel's typical housekeeping level, usually near 100 (default = 50.0)"
-        highlight_genes:           "Case-insensitive substrings (e.g. ['mex','opr','amp','nal']) to flag in the gene-level tier-3 table. A sort/flag convenience, not a filter -- every gene is still reported."
+        highlight_genes:           "Case-insensitive substrings (e.g. ['hsd','mod','res']) to flag in the gene-level tier-3 table. A sort/flag convenience, not a filter -- every gene is still reported."
     }
 
     # basename() evaluates against the path string without localising anything,
@@ -132,13 +121,14 @@ workflow dna_methylation_calling {
     }
 
     # Gating the main scatter on this is the point: a mismatched panel or an
-    # unusable sample name otherwise surfaces only after alignment, Bakta and
-    # Panaroo have already been paid for.
+    # unusable sample name otherwise surfaces only after alignment and Panaroo
+    # have already been paid for.
     call utils.validate_panel {
         input:
             derived_names    = derived_name,
             n_primary        = length(modbams),
-            companion_counts = [length(assemblies)],
+            companion_counts = [length(assemblies), length(annotation_gff3s),
+                                length(annotation_faas), length(annotation_fnas)],
             sample_names     = sample_names
     }
 
@@ -146,11 +136,25 @@ workflow dna_methylation_calling {
 
         String resolved_name = validate_panel.sample_ids[i]
 
+        # Cheap, and everything below uses its checked_name, so nothing
+        # expensive starts for an isolate whose assembly and annotation do not
+        # belong together.
+        call validate_task.validate_annotation {
+            input:
+                assembly    = assemblies[i],
+                gff3        = annotation_gff3s[i],
+                fna         = annotation_fnas[i],
+                faa         = annotation_faas[i],
+                sample_name = resolved_name
+        }
+
+        String isolate = validate_annotation.checked_name
+
         # Everything below is in this isolate's own coordinate space.
         call align_task.align_modbam {
             input:
                 modbam             = modbams[i],
-                sample_name        = resolved_name,
+                sample_name        = isolate,
                 reference_fasta    = assemblies[i],
                 min_read_length    = min_read_length,
                 min_mapped_percent = min_mapped_percent
@@ -160,7 +164,7 @@ workflow dna_methylation_calling {
             input:
                 aligned_bam       = align_modbam.aligned_bam,
                 aligned_bam_index = align_modbam.aligned_bam_index,
-                sample_name       = resolved_name,
+                sample_name       = isolate,
                 reference_fasta   = assemblies[i],
                 no_filtering      = no_filtering,
                 filter_threshold  = filter_threshold,
@@ -172,66 +176,39 @@ workflow dna_methylation_calling {
             call modkit_task.modkit_find_motifs {
                 input:
                     bedmethyl       = modkit_pileup.bedmethyl,
-                    sample_name     = resolved_name,
+                    sample_name     = isolate,
                     reference_fasta = assemblies[i]
             }
         }
 
-        Boolean bakta_precomputed = defined(bakta_gff3s) && defined(bakta_faas) && defined(bakta_fnas)
+        call annotate_task.annotate_methylation {
+            input:
+                bedmethyl          = modkit_pileup.bedmethyl,
+                sample_name        = isolate,
+                reference_gff      = annotation_gff3s[i],
+                reference_fai      = align_modbam.reference_fai,
+                flank_upstream     = flank_upstream,
+                trim_to_intergenic = trim_to_intergenic,
+                min_coverage       = min_coverage,
+                min_percent        = min_percent,
+                min_mod_reads      = min_mod_reads,
+                feature_type       = feature_type
+        }
 
-        if (run_bakta) {
-            if (!bakta_precomputed) {
-                call bakta_task.bakta {
-                    input:
-                        assembly    = assemblies[i],
-                        sample_name = resolved_name,
-                        bakta_db    = bakta_db,
-                        proteins    = proteins,
-                        genus       = genus,
-                        species     = species,
-                        strain      = resolved_name
-                }
-            }
-
-            # Whichever branch ran, this isolate's annotation is now available
-            # under one name -- everything below is agnostic to where it came
-            # from.
-            File resolved_gff3 = if bakta_precomputed
-                then select_first([bakta_gff3s])[i] else select_first([bakta.gff3])
-            File resolved_faa = if bakta_precomputed
-                then select_first([bakta_faas])[i] else select_first([bakta.faa])
-            File resolved_fna = if bakta_precomputed
-                then select_first([bakta_fnas])[i] else select_first([bakta.fna])
-
-            call annotate_task.annotate_methylation {
+        if (defined(rebase_goldset_fasta) && defined(rebase_motif_tsv)) {
+            call rebase_task.rebase_blastp {
                 input:
-                    bedmethyl          = modkit_pileup.bedmethyl,
-                    sample_name        = resolved_name,
-                    reference_gff      = resolved_gff3,
-                    reference_fai      = align_modbam.reference_fai,
-                    flank_upstream     = flank_upstream,
-                    trim_to_intergenic = trim_to_intergenic,
-                    min_coverage       = min_coverage,
-                    min_percent        = min_percent,
-                    min_mod_reads      = min_mod_reads,
-                    feature_type       = feature_type
+                    faa                   = annotation_faas[i],
+                    sample_name           = isolate,
+                    rebase_goldset_fasta  = select_first([rebase_goldset_fasta]),
+                    evalue                = rebase_evalue
             }
 
-            if (defined(rebase_goldset_fasta) && defined(rebase_motif_tsv)) {
-                call rebase_task.rebase_blastp {
-                    input:
-                        faa                   = resolved_faa,
-                        sample_name           = resolved_name,
-                        rebase_goldset_fasta  = select_first([rebase_goldset_fasta]),
-                        evalue                = rebase_evalue
-                }
-
-                call rebase_task.rebase_join_motifs {
-                    input:
-                        blast_hits       = rebase_blastp.blast_hits,
-                        sample_name      = resolved_name,
-                        rebase_motif_tsv = select_first([rebase_motif_tsv])
-                }
+            call rebase_task.rebase_join_motifs {
+                input:
+                    blast_hits       = rebase_blastp.blast_hits,
+                    sample_name      = isolate,
+                    rebase_motif_tsv = select_first([rebase_motif_tsv])
             }
         }
 
@@ -243,36 +220,33 @@ workflow dna_methylation_calling {
                 input:
                     find_motifs_tsv   = modkit_find_motifs.motifs_tsv,
                     rebase_mtases_tsv = rebase_join_motifs.rebase_mtases,
-                    basename          = "~{resolved_name}_motif_list"
+                    basename          = "~{isolate}_motif_list"
             }
 
             call landscape_task.motif_landscape {
                 input:
                     bedmethyl                = modkit_pileup.bedmethyl,
                     motif_list               = build_motif_list.motif_list,
-                    sample_name              = resolved_name,
+                    sample_name              = isolate,
                     reference_fasta          = assemblies[i],
                     min_coverage             = min_coverage,
                     heterogeneous_low_cutoff = heterogeneous_low_cutoff
             }
-        }
 
-        # The single per-isolate deliverable: gene/product/region annotation,
-        # promoter windows, and motif context alongside each methylation call,
-        # in one row per site. Needs both annotate_methylation (run_bakta) and
-        # this isolate's candidate motif list (run_motif_landscape).
-        if (run_bakta && run_motif_landscape) {
+            # The single per-isolate deliverable: gene/product/region annotation,
+            # promoter windows, and motif context alongside each methylation
+            # call, in one row per site.
             call annotate_motifs_task.annotate_motif_membership {
                 input:
-                    annotated_tsv   = select_first([annotate_methylation.annotated_tsv]),
-                    motif_list      = select_first([build_motif_list.motif_list]),
-                    sample_name     = resolved_name,
+                    annotated_tsv   = annotate_methylation.annotated_tsv,
+                    motif_list      = build_motif_list.motif_list,
+                    sample_name     = isolate,
                     reference_fasta = assemblies[i]
             }
         }
 
         Array[String] summary_row = [
-            resolved_name,
+            isolate,
             "~{align_modbam.n_reads_raw}",
             "~{align_modbam.n_reads_length_filtered}",
             align_modbam.percent_mapped,
@@ -284,15 +258,16 @@ workflow dna_methylation_calling {
             modkit_pileup.mean_percent_6ma,
             modkit_pileup.mean_percent_4mc,
             modkit_pileup.mean_percent_5mc,
+            modkit_pileup.mod_codes_seen,
             if defined(modkit_find_motifs.n_motifs) then "~{modkit_find_motifs.n_motifs}" else "NA",
             if defined(modkit_find_motifs.motifs)   then "~{modkit_find_motifs.motifs}"   else "NA",
-            if defined(bakta.n_contigs)             then "~{bakta.n_contigs}"             else "NA",
-            if defined(bakta.genome_size)           then "~{bakta.genome_size}"           else "NA",
-            if defined(bakta.n_cds)                 then "~{bakta.n_cds}"                 else "NA",
-            if defined(annotate_methylation.n_genic)    then "~{annotate_methylation.n_genic}"    else "NA",
-            if defined(annotate_methylation.n_upstream) then "~{annotate_methylation.n_upstream}" else "NA",
-            if defined(annotate_methylation.n_loci_with_methylation)
-                then "~{annotate_methylation.n_loci_with_methylation}" else "NA",
+            "~{validate_annotation.n_contigs}",
+            "~{validate_annotation.genome_size}",
+            validate_annotation.gc_percent,
+            "~{validate_annotation.n_cds}",
+            "~{annotate_methylation.n_genic}",
+            "~{annotate_methylation.n_upstream}",
+            "~{annotate_methylation.n_loci_with_methylation}",
             modkit_pileup.modkit_version
         ]
     }
@@ -300,9 +275,9 @@ workflow dna_methylation_calling {
     Array[String] summary_header = [
         "sample", "n_reads_raw", "n_reads_length_filtered", "percent_mapped", "mean_depth", "positions_covered",
         "n_sites_6mA", "n_sites_4mC", "n_sites_5mC",
-        "mean_percent_6mA", "mean_percent_4mC", "mean_percent_5mC",
+        "mean_percent_6mA", "mean_percent_4mC", "mean_percent_5mC", "mod_codes_seen",
         "n_motifs", "motifs",
-        "n_contigs", "genome_size", "n_cds",
+        "n_contigs", "genome_size", "gc_percent", "n_cds",
         "n_genic_sites", "n_upstream_sites", "n_loci_with_methylation",
         "modkit_version"
     ]
@@ -318,36 +293,40 @@ workflow dna_methylation_calling {
     # isolates to each other needs an orthology layer to map those tags onto
     # shared gene groups; coordinates cannot do that job across independent
     # assemblies.
-    if (run_bakta) {
-        call utils.concat_tables {
-            input:
-                tables   = select_all(annotate_methylation.annotated_tsv),
-                basename = merged_basename
-        }
+    call utils.concat_tables {
+        input:
+            tables   = annotate_methylation.annotated_tsv,
+            basename = merged_basename
     }
 
     # Orthology is the cross-isolate join key. Coordinates cannot serve that
     # role once every isolate has been assembled and annotated independently,
     # so the pangenome is what turns a stack of per-isolate catalogues into a
     # gene-by-isolate matrix.
-    if (run_bakta && run_pangenome && !defined(gene_presence_absence)) {
+    #
+    # sample_names is passed explicitly: Panaroo otherwise labels each isolate's
+    # column after its GFF filename, which for a supplied annotation is whatever
+    # the upstream pipeline called it, and the ortholog join below looks the
+    # columns up by sample name.
+    if (run_pangenome && !defined(gene_presence_absence)) {
         call panaroo_task.panaroo {
             input:
-                gff3s          = select_all(resolved_gff3),
-                fnas           = select_all(resolved_fna),
+                gff3s          = annotation_gff3s,
+                fnas           = annotation_fnas,
+                sample_names   = isolate,
                 clean_mode     = panaroo_clean_mode,
                 core_threshold = core_threshold,
                 merge_paralogs = merge_paralogs
         }
     }
 
-    if (run_bakta && (run_pangenome || defined(gene_presence_absence))) {
+    if (run_pangenome || defined(gene_presence_absence)) {
         call ortholog_task.methylation_orthologs {
             input:
                 gene_presence_absence = select_first([gene_presence_absence,
                                                       panaroo.gene_presence_absence]),
-                annotated_tables      = select_all(annotate_methylation.annotated_tsv),
-                sample_names          = resolved_name
+                annotated_tables      = annotate_methylation.annotated_tsv,
+                sample_names          = isolate
         }
     }
 
@@ -366,7 +345,7 @@ workflow dna_methylation_calling {
 
     output {
         File  summary_tsv          = name_summary.summary
-        File? methylation_long     = concat_tables.merged
+        File  methylation_long     = concat_tables.merged
 
         # The comparative deliverables: ortholog groups x isolates, with gene
         # absence held as NA rather than collapsed to zero.
@@ -393,12 +372,7 @@ workflow dna_methylation_calling {
         Array[File] bed_5mc              = modkit_pileup.bed_5mc
 
         Array[File?] motif_tables        = modkit_find_motifs.motifs_tsv
-        # Populated regardless of whether Bakta ran here or annotations were
-        # supplied pre-computed -- always the isolate's actual annotation.
-        Array[File?] bakta_gff3          = resolved_gff3
-        Array[File?] bakta_faa           = resolved_faa
-        Array[File?] bakta_tsv           = bakta.annotation_tsv
-        Array[File?] annotated_tables    = annotate_methylation.annotated_tsv
+        Array[File]  annotated_tables    = annotate_methylation.annotated_tsv
 
         # annotate_methylation's table plus a motif column: the single
         # per-isolate file combining gene/product/region annotation, promoter

@@ -13,7 +13,7 @@ task motif_landscape_summary {
     parameter_meta {
         per_isolate_landscape: "One motif_landscape.tsv per isolate (tier 1 + tier 2, already computed within each genome)"
         ortholog_long_table:   "methylation_orthologs' _long.tsv, already gene x isolate with genic_sites_per_kb. Reused rather than recomputed -- the pangenome join already did the hard part."
-        highlight_genes:       "Case-insensitive substrings to flag in gene_name or annotation, e.g. ['mex','opr','amp','nal']. Purely a sort/flag convenience over the full ranked table, not a filter -- everything is still reported."
+        highlight_genes:       "Case-insensitive substrings to flag in gene_name or annotation, e.g. ['hsd','mod','res']. Purely a sort/flag convenience over the full ranked table, not a filter -- everything is still reported."
         basename:              "Basename for the two summary tables"
         docker:                "Container image"
     }
@@ -36,6 +36,7 @@ task motif_landscape_summary {
 
         # ---- motif-level -----------------------------------------------------
         by_motif = defaultdict(list)  # (motif, code) -> [in_motif_mean_pct, ...]
+        scoring_modes = defaultdict(set)  # (motif, code) -> {"offset", "window"}
         n_isolates_seen = 0
         seen_samples = set()
         for path in landscape_paths:
@@ -46,22 +47,30 @@ task motif_landscape_summary {
                     if pct == "NA":
                         continue
                     by_motif[(row["motif"], row["mod_code"])].append(float(pct))
+                    # Landscape tables from before the scoring column existed
+                    # were all window-scored.
+                    scoring_modes[(row["motif"], row["mod_code"])].add(row.get("scoring") or "window")
         n_isolates_seen = len(seen_samples)
 
         motif_rows = []
         for (motif, code), vals in by_motif.items():
             mean = statistics.mean(vals)
             cv = (statistics.pstdev(vals) / mean) if mean > 0 and len(vals) > 1 else 0.0
+            # A motif scored by offset in some isolates and by window in others
+            # has percentages on different scales: window scoring reads lower
+            # wherever the window holds unmethylated bases of the same type.
+            modes = scoring_modes[(motif, code)]
+            scoring = next(iter(modes)) if len(modes) == 1 else "mixed"
             motif_rows.append([motif, code, len(vals), n_isolates_seen,
                                 "%.2f" % mean, "%.2f" % min(vals), "%.2f" % max(vals),
-                                "%.3f" % cv])
+                                "%.3f" % cv, scoring])
         motif_rows.sort(key=lambda r: -float(r[7]))
 
         with open(motif_out, "w", newline="") as out:
             w = csv.writer(out, delimiter="\t", lineterminator="\n")
             w.writerow(["motif", "mod_code", "n_isolates_tested", "n_isolates_total",
                         "mean_in_motif_pct", "min_in_motif_pct", "max_in_motif_pct",
-                        "cross_isolate_cv"])
+                        "cross_isolate_cv", "scoring"])
             w.writerows(motif_rows)
 
         # ---- gene-level, from the existing ortholog long table ---------------
